@@ -41,6 +41,6 @@ export function getAuthCookieOptions(): {
     secure,
     sameSite: secure ? 'none' : 'lax',
     path: '/',
-    maxAge: Math.floor(maxAge / 1000),
+    maxAge,
   };
 }
