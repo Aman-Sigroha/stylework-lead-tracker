@@ -116,10 +116,16 @@ describe('GET /api/leads', () => {
     expect(response.body.success).toBe(true);
   });
 
-  it('returns an array', async () => {
+  it('returns an array with default pagination metadata', async () => {
     const response = await request(app).get('/api/leads');
     expect(Array.isArray(response.body.data)).toBe(true);
     expect(response.body.data).toHaveLength(2);
+    expect(response.body.pagination).toEqual({
+      page: 1,
+      limit: 20,
+      total: 2,
+      totalPages: 1,
+    });
   });
 
   it('supports combined search across name, email, and phone', async () => {
@@ -130,7 +136,7 @@ describe('GET /api/leads', () => {
       expect.stringMatching(
         /name ILIKE \$1[\s\S]*OR email ILIKE \$1[\s\S]*OR COALESCE\(phone/,
       ),
-      ['%jane%', 100],
+      ['%jane%', 20, 0],
     );
   });
 
@@ -142,7 +148,7 @@ describe('GET /api/leads', () => {
     expect(response.status).toBe(200);
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining('WHERE name ILIKE $1'),
-      ['%jane%', 100],
+      ['%jane%', 20, 0],
     );
   });
 
@@ -154,7 +160,7 @@ describe('GET /api/leads', () => {
     expect(response.status).toBe(200);
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining('WHERE email ILIKE $1'),
-      ['%jane@example.com%', 100],
+      ['%jane@example.com%', 20, 0],
     );
   });
 
@@ -166,7 +172,7 @@ describe('GET /api/leads', () => {
     expect(response.status).toBe(200);
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining("COALESCE(phone, '') ILIKE $1"),
-      ['%9876%', 100],
+      ['%9876%', 20, 0],
     );
   });
 
@@ -192,7 +198,7 @@ describe('GET /api/leads', () => {
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY created_at DESC/),
-      [100],
+      [20, 0],
     );
   });
 
@@ -201,7 +207,7 @@ describe('GET /api/leads', () => {
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY name ASC, created_at DESC/),
-      [100],
+      [20, 0],
     );
   });
 
@@ -210,7 +216,7 @@ describe('GET /api/leads', () => {
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY name DESC, created_at DESC/),
-      [100],
+      [20, 0],
     );
   });
 
@@ -219,7 +225,7 @@ describe('GET /api/leads', () => {
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY email ASC, created_at DESC/),
-      [100],
+      [20, 0],
     );
   });
 
@@ -228,7 +234,7 @@ describe('GET /api/leads', () => {
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY email DESC, created_at DESC/),
-      [100],
+      [20, 0],
     );
   });
 
@@ -239,7 +245,7 @@ describe('GET /api/leads', () => {
       expect.stringMatching(
         /ORDER BY CASE status[\s\S]*WHEN 'new' THEN 1[\s\S]*END ASC, created_at DESC/,
       ),
-      [100],
+      [20, 0],
     );
   });
 
@@ -250,7 +256,7 @@ describe('GET /api/leads', () => {
       expect.stringMatching(
         /ORDER BY CASE status[\s\S]*END DESC, created_at DESC/,
       ),
-      [100],
+      [20, 0],
     );
   });
 
@@ -279,7 +285,7 @@ describe('GET /api/leads', () => {
       expect.stringMatching(
         /WHERE name ILIKE \$1[\s\S]*ORDER BY email ASC, created_at DESC/,
       ),
-      ['%jane%', 100],
+      ['%jane%', 20, 0],
     );
   });
 });

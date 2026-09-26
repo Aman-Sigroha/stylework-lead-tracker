@@ -4,8 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '../../lib/api-errors.js';
 import { formatLeadDate } from '../../lib/format-date.js';
 import { LEAD_STATUSES } from '../../types/lead.js';
+import type { FetchLeadsParams } from './api/leads-api.js';
+import { createFetchLeadsResult } from './lib/leads-query-response.js';
 import { mockLead, mockLeadTwo } from '../../test/fixtures/leads.js';
 import { renderLeadTracker } from '../../test/render-lead-tracker.tsx';
+
+function listQuery(
+  overrides: Partial<FetchLeadsParams> = {},
+): FetchLeadsParams {
+  return {
+    searchBy: 'all',
+    page: 1,
+    limit: 20,
+    ...overrides,
+  };
+}
 
 const {
   fetchLeads,
@@ -54,7 +67,7 @@ function getSearchInput() {
 }
 
 function getSearchBySelect() {
-  return within(getSearchSection()).getByRole('combobox');
+  return within(getSearchSection()).getByLabelText('Search by scope');
 }
 
 function openCreateLeadDialog(user: ReturnType<typeof userEvent.setup>) {
@@ -81,7 +94,12 @@ async function typeSearchTerm(user: ReturnType<typeof userEvent.setup>, value: s
 describe('LeadTrackerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchLeads.mockResolvedValue([mockLead, mockLeadTwo]);
+    fetchLeads.mockResolvedValue(
+      createFetchLeadsResult([mockLead, mockLeadTwo], {
+        total: 2,
+        totalPages: 1,
+      }),
+    );
     createLead.mockResolvedValue(mockLead);
     updateLead.mockResolvedValue({
       ...mockLead,
@@ -127,7 +145,7 @@ describe('LeadTrackerPage', () => {
     });
 
     it('shows empty-database state', async () => {
-      fetchLeads.mockResolvedValue([]);
+      fetchLeads.mockResolvedValue(createFetchLeadsResult([], { total: 0, totalPages: 0 }));
       renderLeadTracker();
 
       expect(
@@ -137,7 +155,12 @@ describe('LeadTrackerPage', () => {
 
     it('shows no-results state when searching', async () => {
       fetchLeads.mockImplementation(({ search }) =>
-        Promise.resolve(search === 'nomatch' ? [] : [mockLead]),
+        Promise.resolve(
+          createFetchLeadsResult(search === 'nomatch' ? [] : [mockLead], {
+            total: search === 'nomatch' ? 0 : 1,
+            totalPages: search === 'nomatch' ? 0 : 1,
+          }),
+        ),
       );
 
       const user = userEvent.setup();
@@ -147,7 +170,9 @@ describe('LeadTrackerPage', () => {
       await typeSearchTerm(user, 'nomatch');
 
       expect(
-        await screen.findByText('No leads match your search.', { timeout: 2000 }),
+        await screen.findByText('No leads match your search or filters.', {
+          timeout: 2000,
+        }),
       ).toBeInTheDocument();
     });
 
@@ -159,7 +184,7 @@ describe('LeadTrackerPage', () => {
         await screen.findByText('Unable to load leads. Please try again.'),
       ).toBeInTheDocument();
 
-      fetchLeads.mockResolvedValue([mockLead]);
+      fetchLeads.mockResolvedValue(createFetchLeadsResult([mockLead]));
       await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
       expect(await screen.findByText('Jane Doe')).toBeInTheDocument();
@@ -175,10 +200,9 @@ describe('LeadTrackerPage', () => {
       await typeSearchTerm(user, 'jane');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: 'jane',
-          searchBy: 'all',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ search: 'jane' }),
+        );
       });
     });
 
@@ -198,10 +222,9 @@ describe('LeadTrackerPage', () => {
       await typeSearchTerm(user, 'jane');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: 'jane',
-          searchBy: 'name',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ search: 'jane', searchBy: 'name' }),
+        );
       });
     });
 
@@ -214,10 +237,9 @@ describe('LeadTrackerPage', () => {
       await typeSearchTerm(user, 'jane@example.com');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: 'jane@example.com',
-          searchBy: 'email',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ search: 'jane@example.com', searchBy: 'email' }),
+        );
       });
     });
 
@@ -230,10 +252,9 @@ describe('LeadTrackerPage', () => {
       await typeSearchTerm(user, '555');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: '555',
-          searchBy: 'phone',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ search: '555', searchBy: 'phone' }),
+        );
       });
     });
 
@@ -244,19 +265,15 @@ describe('LeadTrackerPage', () => {
 
       await typeSearchTerm(user, 'jane');
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: 'jane',
-          searchBy: 'all',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ search: 'jane' }),
+        );
       });
 
       await typeSearchTerm(user, '');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: undefined,
-          searchBy: 'all',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(listQuery());
       });
     });
   });
@@ -279,12 +296,9 @@ describe('LeadTrackerPage', () => {
       await user.selectOptions(getSortBySelect(), 'name');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: undefined,
-          searchBy: 'all',
-          sortBy: 'name',
-          sortOrder: 'desc',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ sortBy: 'name', sortOrder: 'desc' }),
+        );
       });
     });
 
@@ -296,12 +310,9 @@ describe('LeadTrackerPage', () => {
       await user.selectOptions(getSortBySelect(), 'email');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: undefined,
-          searchBy: 'all',
-          sortBy: 'email',
-          sortOrder: 'desc',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ sortBy: 'email', sortOrder: 'desc' }),
+        );
       });
     });
 
@@ -313,12 +324,9 @@ describe('LeadTrackerPage', () => {
       await user.selectOptions(getSortBySelect(), 'status');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: undefined,
-          searchBy: 'all',
-          sortBy: 'status',
-          sortOrder: 'desc',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ sortBy: 'status', sortOrder: 'desc' }),
+        );
       });
     });
 
@@ -331,12 +339,9 @@ describe('LeadTrackerPage', () => {
       await user.selectOptions(getSortDirectionSelect(), 'asc');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: undefined,
-          searchBy: 'all',
-          sortBy: 'name',
-          sortOrder: 'asc',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ sortBy: 'name', sortOrder: 'asc' }),
+        );
       });
     });
 
@@ -349,12 +354,13 @@ describe('LeadTrackerPage', () => {
       await typeSearchTerm(user, 'jane');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: 'jane',
-          searchBy: 'all',
-          sortBy: 'email',
-          sortOrder: 'desc',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({
+            search: 'jane',
+            sortBy: 'email',
+            sortOrder: 'desc',
+          }),
+        );
       });
     });
 
@@ -373,10 +379,7 @@ describe('LeadTrackerPage', () => {
       await user.selectOptions(getSortBySelect(), 'default');
 
       await waitFor(() => {
-        expect(fetchLeads).toHaveBeenLastCalledWith({
-          search: undefined,
-          searchBy: 'all',
-        });
+        expect(fetchLeads).toHaveBeenLastCalledWith(listQuery());
       });
     });
   });
@@ -399,10 +402,11 @@ describe('LeadTrackerPage', () => {
 
       await openCreateLeadDialog(user);
 
-      expect(screen.getByLabelText('Name')).toBeInTheDocument();
-      expect(screen.getByLabelText('Email')).toBeInTheDocument();
-      expect(screen.getByLabelText(/Phone/)).toBeInTheDocument();
-      expect(screen.getByLabelText('Status')).toBeInTheDocument();
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).getByLabelText('Name')).toBeInTheDocument();
+      expect(within(dialog).getByLabelText('Email')).toBeInTheDocument();
+      expect(within(dialog).getByLabelText(/Phone/)).toBeInTheDocument();
+      expect(within(dialog).getByLabelText('Status')).toBeInTheDocument();
     });
 
     it('shows validation errors on empty submission', async () => {
@@ -758,8 +762,15 @@ describe('LeadTrackerPage', () => {
     it('closes the dialog and refreshes the list after a successful deletion', async () => {
       const user = userEvent.setup();
       fetchLeads
-        .mockResolvedValueOnce([mockLead, mockLeadTwo])
-        .mockResolvedValue([mockLeadTwo]);
+        .mockResolvedValueOnce(
+          createFetchLeadsResult([mockLead, mockLeadTwo], {
+            total: 2,
+            totalPages: 1,
+          }),
+        )
+        .mockResolvedValue(
+          createFetchLeadsResult([mockLeadTwo], { total: 1, totalPages: 1 }),
+        );
       renderLeadTracker();
       await screen.findByText('Jane Doe');
       const initialCalls = fetchLeads.mock.calls.length;
@@ -806,6 +817,208 @@ describe('LeadTrackerPage', () => {
       expect(
         within(getLeadListSection()).getByText('Jane Doe'),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('pagination and filters', () => {
+    function getPaginationRegion() {
+      return within(getLeadListSection()).getByLabelText('Lead list pagination');
+    }
+
+    function getStatusFilterSelect() {
+      return within(getSearchSection()).getByLabelText('Filter by status');
+    }
+
+    it('renders pagination controls with total count', async () => {
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      const pagination = getPaginationRegion();
+      expect(within(pagination).getByText('2 results')).toBeInTheDocument();
+      expect(within(pagination).getByText('Page 1 of 1')).toBeInTheDocument();
+      expect(
+        within(pagination).getByRole('button', { name: 'Previous' }),
+      ).toBeDisabled();
+      expect(
+        within(pagination).getByRole('button', { name: 'Next' }),
+      ).toBeDisabled();
+    });
+
+    it('disables Previous on the first page and Next on the last page', async () => {
+      fetchLeads.mockImplementation(({ page = 1 }) =>
+        Promise.resolve(
+          createFetchLeadsResult([mockLead], {
+            page,
+            limit: 20,
+            total: 2,
+            totalPages: 2,
+          }),
+        ),
+      );
+
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      const pagination = getPaginationRegion();
+      expect(
+        within(pagination).getByRole('button', { name: 'Previous' }),
+      ).toBeDisabled();
+      expect(
+        within(pagination).getByRole('button', { name: 'Next' }),
+      ).not.toBeDisabled();
+
+      await user.click(
+        within(pagination).getByRole('button', { name: 'Next' }),
+      );
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(listQuery({ page: 2, limit: 20 }));
+      });
+      expect(
+        within(getPaginationRegion()).getByRole('button', { name: 'Next' }),
+      ).toBeDisabled();
+    });
+
+    it('changes page size through the selector', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(
+        within(getPaginationRegion()).getByLabelText('Page size'),
+        '50',
+      );
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(listQuery({ limit: 50 }));
+      });
+    });
+
+    it('requests status filtering from the backend', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getStatusFilterSelect(), 'qualified');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ status: 'qualified' }),
+        );
+      });
+    });
+
+    it('requests date filtering from the backend', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.type(
+        within(getSearchSection()).getByLabelText('Created from'),
+        '2026-03-01',
+      );
+      await user.type(
+        within(getSearchSection()).getByLabelText('Created to'),
+        '2026-03-31',
+      );
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({
+            createdFrom: '2026-03-01',
+            createdTo: '2026-03-31',
+          }),
+        );
+      });
+    });
+
+    it('combines search, filters, and sorting in the API request', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getSortBySelect(), 'name');
+      await user.selectOptions(getStatusFilterSelect(), 'new');
+      await typeSearchTerm(user, 'jane');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({
+            search: 'jane',
+            sortBy: 'name',
+            sortOrder: 'desc',
+            status: 'new',
+          }),
+        );
+      });
+    });
+
+    it('resets page to 1 when search changes', async () => {
+      fetchLeads.mockImplementation(({ page }) =>
+        Promise.resolve(
+          createFetchLeadsResult([mockLead], {
+            page,
+            total: 3,
+            totalPages: 3,
+            limit: 1,
+          }),
+        ),
+      );
+
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.click(
+        within(getLeadListSection()).getByRole('button', { name: 'Next' }),
+      );
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ page: 2, limit: 20 }),
+        );
+      });
+
+      await typeSearchTerm(user, 'jane');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ search: 'jane', page: 1, limit: 20 }),
+        );
+      });
+    });
+
+    it('shows an empty filtered state when no leads match', async () => {
+      fetchLeads.mockResolvedValue(
+        createFetchLeadsResult([], { total: 0, totalPages: 0 }),
+      );
+
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('0 results');
+
+      await user.selectOptions(getStatusFilterSelect(), 'lost');
+
+      expect(
+        await screen.findByText('No leads match your search or filters.'),
+      ).toBeInTheDocument();
+    });
+
+    it('refetches the current query after a successful mutation', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+      const initialCalls = fetchLeads.mock.calls.length;
+
+      await user.selectOptions(
+        screen.getByLabelText('Status for Jane Doe'),
+        'contacted',
+      );
+
+      await waitFor(() => {
+        expect(fetchLeads.mock.calls.length).toBeGreaterThan(initialCalls);
+      });
     });
   });
 

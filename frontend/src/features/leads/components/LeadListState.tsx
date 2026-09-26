@@ -8,7 +8,7 @@ const DEFAULT_MESSAGES: Record<LeadListStateProps['variant'], string> = {
   loading: 'Loading leads...',
   error: 'Unable to load leads. Please try again.',
   empty: 'No leads yet. Create your first lead to get started.',
-  'no-results': 'No leads match your search.',
+  'no-results': 'No leads match your search or filters.',
 };
 
 export function LeadListState({

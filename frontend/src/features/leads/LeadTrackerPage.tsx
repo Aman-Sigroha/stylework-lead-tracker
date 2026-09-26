@@ -3,8 +3,10 @@ import { CreateLeadModal } from './components/CreateLeadModal.tsx';
 import { DeleteLeadDialog } from './components/DeleteLeadDialog.tsx';
 import { EditLeadModal } from './components/EditLeadModal.tsx';
 import { CreateLeadSection } from './components/CreateLeadSection.tsx';
+import { LeadAdvancedFilters } from './components/LeadAdvancedFilters.tsx';
 import { LeadList } from './components/LeadList.tsx';
 import { LeadListState } from './components/LeadListState.tsx';
+import { LeadPaginationControls } from './components/LeadPaginationControls.tsx';
 import { LeadSearchControls } from './components/LeadSearchControls.tsx';
 import { LeadSortControls } from './components/LeadSortControls.tsx';
 import { SuccessToast } from './components/SuccessToast.tsx';
@@ -16,10 +18,12 @@ import { ApiRequestError } from '../../lib/api-errors.js';
 import { getStatusUpdateErrorMessage } from './lib/status-update-errors.ts';
 import type {
   Lead,
+  LeadPageSize,
   LeadSearchBy,
   LeadSortField,
   LeadSortOrder,
   LeadStatus,
+  LeadStatusFilter,
 } from '../../types/lead.js';
 import './LeadTrackerPage.css';
 
@@ -28,6 +32,11 @@ export function LeadTrackerPage() {
   const [searchBy, setSearchBy] = useState<LeadSearchBy>('all');
   const [sortField, setSortField] = useState<LeadSortField>('default');
   const [sortOrder, setSortOrder] = useState<LeadSortOrder>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<LeadPageSize>(20);
+  const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
@@ -40,7 +49,43 @@ export function LeadTrackerPage() {
     searchBy,
     sortField,
     sortOrder,
+    page,
+    pageSize,
+    statusFilter,
+    createdFrom,
+    createdTo,
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    debouncedSearch,
+    searchBy,
+    sortField,
+    sortOrder,
+    pageSize,
+    statusFilter,
+    createdFrom,
+    createdTo,
+  ]);
+
+  useEffect(() => {
+    const pagination = data?.pagination;
+    if (pagination === undefined) {
+      return;
+    }
+
+    if (pagination.totalPages === 0) {
+      if (page !== 1) {
+        setPage(1);
+      }
+      return;
+    }
+
+    if (page > pagination.totalPages) {
+      setPage(pagination.totalPages);
+    }
+  }, [data?.pagination, page]);
 
   useEffect(() => {
     if (successMessage === null) {
@@ -57,7 +102,13 @@ export function LeadTrackerPage() {
   }, [successMessage]);
 
   const hasActiveSearch = debouncedSearch.trim() !== '';
-  const leads = data ?? [];
+  const hasActiveFilters =
+    statusFilter !== 'all' ||
+    createdFrom.trim() !== '' ||
+    createdTo.trim() !== '';
+  const hasQueryConstraints = hasActiveSearch || hasActiveFilters;
+  const leads = data?.leads ?? [];
+  const pagination = data?.pagination;
 
   const handleLeadCreated = () => {
     setIsCreateOpen(false);
@@ -105,6 +156,9 @@ export function LeadTrackerPage() {
     );
   };
 
+  const showListLoading =
+    isLoading || (isFetching && leads.length === 0 && !isError);
+
   return (
     <div className="lead-tracker">
       {successMessage !== null ? (
@@ -127,6 +181,14 @@ export function LeadTrackerPage() {
             searchBy={searchBy}
             onSearchChange={setSearch}
             onSearchByChange={setSearchBy}
+          />
+          <LeadAdvancedFilters
+            statusFilter={statusFilter}
+            createdFrom={createdFrom}
+            createdTo={createdTo}
+            onStatusFilterChange={setStatusFilter}
+            onCreatedFromChange={setCreatedFrom}
+            onCreatedToChange={setCreatedTo}
           />
         </section>
 
@@ -156,13 +218,22 @@ export function LeadTrackerPage() {
             onSortOrderChange={setSortOrder}
           />
 
-          {isLoading ? (
+          {pagination !== undefined ? (
+            <LeadPaginationControls
+              pagination={pagination}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          ) : null}
+
+          {showListLoading ? (
             <LeadListState variant="loading" />
           ) : isError ? (
             <LeadListState variant="error" onRetry={() => void refetch()} />
           ) : leads.length === 0 ? (
             <LeadListState
-              variant={hasActiveSearch ? 'no-results' : 'empty'}
+              variant={hasQueryConstraints ? 'no-results' : 'empty'}
             />
           ) : (
             <LeadList

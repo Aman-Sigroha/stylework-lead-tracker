@@ -109,9 +109,32 @@ export function installDefaultQueryMock(queryMock: Mock<QueryFn>): void {
       };
     }
 
+    if (text.includes('COUNT(*)')) {
+      const hasNomatch = params?.some(
+        (value) => typeof value === 'string' && value === '%nomatch%',
+      );
+
+      return {
+        rows: [{ count: hasNomatch ? '0' : '2' }] as unknown as MockLeadRow[],
+        rowCount: 1,
+      };
+    }
+
     if (text.includes('FROM leads')) {
+      const defaultRows = [
+        createMockLeadRow(),
+        createMockLeadRow({
+          id: '660e8400-e29b-41d4-a716-446655440001',
+          name: 'John Smith',
+          email: 'john@example.com',
+        }),
+      ];
+
       if (text.includes('WHERE')) {
-        const pattern = String(params?.[0] ?? '');
+        const pattern = params?.find(
+          (value) => typeof value === 'string' && value.startsWith('%'),
+        );
+
         if (pattern === '%nomatch%') {
           return { rows: [], rowCount: 0 };
         }
@@ -119,16 +142,18 @@ export function installDefaultQueryMock(queryMock: Mock<QueryFn>): void {
         return { rows: [createMockLeadRow()], rowCount: 1 };
       }
 
+      const limit =
+        typeof params?.[params.length - 2] === 'number'
+          ? Number(params[params.length - 2])
+          : defaultRows.length;
+      const offset =
+        typeof params?.[params.length - 1] === 'number'
+          ? Number(params[params.length - 1])
+          : 0;
+
       return {
-        rows: [
-          createMockLeadRow(),
-          createMockLeadRow({
-            id: '660e8400-e29b-41d4-a716-446655440001',
-            name: 'John Smith',
-            email: 'john@example.com',
-          }),
-        ],
-        rowCount: 2,
+        rows: defaultRows.slice(offset, offset + limit),
+        rowCount: Math.min(limit, defaultRows.length - offset),
       };
     }
 

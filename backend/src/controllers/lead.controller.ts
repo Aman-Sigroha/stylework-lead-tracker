@@ -76,15 +76,21 @@ export async function listLeadsHandler(
   }
 
   try {
-    const leads = await listLeads({
+    const result = await listLeads({
       search: parsed.data.search,
       searchBy: parsed.data.searchBy,
       sortBy: parsed.data.sortBy,
       sortOrder: parsed.data.sortOrder,
+      page: parsed.data.page,
+      limit: parsed.data.limit,
+      status: parsed.data.status,
+      createdFrom: parsed.data.createdFrom,
+      createdTo: parsed.data.createdTo,
     });
     res.status(200).json({
       success: true,
-      data: leads,
+      data: result.leads,
+      pagination: result.pagination,
     });
   } catch (error) {
     console.error('List leads failed:', error);

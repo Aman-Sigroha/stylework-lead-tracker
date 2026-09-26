@@ -11,6 +11,8 @@ import type {
   LeadSortOrder,
   LeadStatus,
 } from '../../../types/lead.js';
+import type { LeadsPagination } from '../../../types/pagination.js';
+import type { FetchLeadsResult } from '../lib/leads-query-response.js';
 
 export type CreateLeadPayload = {
   name: string;
@@ -24,6 +26,15 @@ export type FetchLeadsParams = {
   searchBy?: LeadSearchBy;
   sortBy?: LeadListSortBy;
   sortOrder?: LeadSortOrder;
+  page?: number;
+  limit?: number;
+  status?: LeadStatus;
+  createdFrom?: string;
+  createdTo?: string;
+};
+
+type LeadsListApiResponse = ApiSuccessResponse<Lead[]> & {
+  pagination: LeadsPagination;
 };
 
 function buildLeadsPath(params: FetchLeadsParams): string {
@@ -46,16 +57,41 @@ function buildLeadsPath(params: FetchLeadsParams): string {
     }
   }
 
+  if (params.page !== undefined) {
+    query.set('page', String(params.page));
+  }
+
+  if (params.limit !== undefined) {
+    query.set('limit', String(params.limit));
+  }
+
+  if (params.status !== undefined) {
+    query.set('status', params.status);
+  }
+
+  if (params.createdFrom !== undefined && params.createdFrom !== '') {
+    query.set('createdFrom', params.createdFrom);
+  }
+
+  if (params.createdTo !== undefined && params.createdTo !== '') {
+    query.set('createdTo', params.createdTo);
+  }
+
   const queryString = query.toString();
   return queryString === '' ? '/leads' : `/leads?${queryString}`;
 }
 
-export async function fetchLeads(params: FetchLeadsParams = {}): Promise<Lead[]> {
-  const response = await apiRequestJson<ApiSuccessResponse<Lead[]>>(
+export async function fetchLeads(
+  params: FetchLeadsParams = {},
+): Promise<FetchLeadsResult> {
+  const response = await apiRequestJson<LeadsListApiResponse>(
     buildLeadsPath(params),
   );
 
-  return response.data;
+  return {
+    leads: response.data,
+    pagination: response.pagination,
+  };
 }
 
 export async function createLead(payload: CreateLeadPayload): Promise<Lead> {

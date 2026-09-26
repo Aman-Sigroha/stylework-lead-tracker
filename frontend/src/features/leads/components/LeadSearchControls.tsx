@@ -38,6 +38,7 @@ export function LeadSearchControls({
         <span className="lead-search__label">Search by</span>
         <select
           className="lead-search__select"
+          aria-label="Search by scope"
           value={searchBy}
           onChange={(event) =>
             onSearchByChange(event.target.value as LeadSearchBy)
