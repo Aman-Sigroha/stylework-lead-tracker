@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.hoisted(() => {
+  process.env.JWT_SECRET = 'test-jwt-secret-for-vitest';
+});
+
 const { queryMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
 }));
@@ -15,20 +19,49 @@ import {
   MISSING_LEAD_ID,
   installDefaultQueryMock,
 } from './test/mock-query.js';
+import { createAuthCookieHeader } from './test/auth-test-helpers.js';
 
 import request from 'supertest';
 import { createApp } from './app.js';
 
 const app = createApp();
+const authCookie = createAuthCookieHeader();
+
+function authedRequest(
+  method: 'get' | 'post' | 'put' | 'patch' | 'delete',
+  path: string,
+) {
+  return request(app)[method](path).set('Cookie', authCookie);
+}
 
 beforeEach(() => {
   installDefaultQueryMock(queryMock);
 });
 
-describe('POST /api/leads', () => {
-  it('returns 201 for a valid lead', async () => {
+describe('lead route authentication', () => {
+  it('returns 401 for unauthenticated GET /api/leads', async () => {
+    const response = await request(app).get('/api/leads');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({
+      success: false,
+      error: { message: 'Authentication required' },
+    });
+  });
+
+  it('returns 401 for unauthenticated POST /api/leads', async () => {
     const response = await request(app)
       .post('/api/leads')
+      .send({ name: 'Jane Doe', email: 'jane@example.com' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.message).toBe('Authentication required');
+  });
+});
+
+describe('POST /api/leads', () => {
+  it('returns 201 for a valid lead', async () => {
+    const response = await authedRequest('post', '/api/leads')
       .send({
         name: 'Jane Doe',
         email: 'jane@example.com',
@@ -41,8 +74,7 @@ describe('POST /api/leads', () => {
   });
 
   it('defaults status to new', async () => {
-    const response = await request(app)
-      .post('/api/leads')
+    const response = await authedRequest('post', '/api/leads')
       .send({
         name: 'Jane Doe',
         email: 'jane@example.com',
@@ -57,8 +89,7 @@ describe('POST /api/leads', () => {
   });
 
   it('returns 400 for invalid email', async () => {
-    const response = await request(app)
-      .post('/api/leads')
+    const response = await authedRequest('post', '/api/leads')
       .send({ name: 'Jane Doe', email: 'not-an-email' });
 
     expect(response.status).toBe(400);
@@ -67,15 +98,13 @@ describe('POST /api/leads', () => {
   });
 
   it('returns 400 for missing or empty name', async () => {
-    const missingName = await request(app)
-      .post('/api/leads')
+    const missingName = await authedRequest('post', '/api/leads')
       .send({ email: 'jane@example.com' });
 
     expect(missingName.status).toBe(400);
     expect(missingName.body.success).toBe(false);
 
-    const emptyName = await request(app)
-      .post('/api/leads')
+    const emptyName = await authedRequest('post', '/api/leads')
       .send({ name: '   ', email: 'jane@example.com' });
 
     expect(emptyName.status).toBe(400);
@@ -83,8 +112,7 @@ describe('POST /api/leads', () => {
   });
 
   it('returns 400 for invalid status', async () => {
-    const response = await request(app)
-      .post('/api/leads')
+    const response = await authedRequest('post', '/api/leads')
       .send({
         name: 'Jane Doe',
         email: 'jane@example.com',
@@ -96,8 +124,7 @@ describe('POST /api/leads', () => {
   });
 
   it('returns 400 for malformed JSON', async () => {
-    const response = await request(app)
-      .post('/api/leads')
+    const response = await authedRequest('post', '/api/leads')
       .set('Content-Type', 'application/json')
       .send('{ invalid json');
 
@@ -111,13 +138,13 @@ describe('POST /api/leads', () => {
 
 describe('GET /api/leads', () => {
   it('returns 200', async () => {
-    const response = await request(app).get('/api/leads');
+    const response = await authedRequest('get','/api/leads');
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
   });
 
   it('returns an array with default pagination metadata', async () => {
-    const response = await request(app).get('/api/leads');
+    const response = await authedRequest('get','/api/leads');
     expect(Array.isArray(response.body.data)).toBe(true);
     expect(response.body.data).toHaveLength(2);
     expect(response.body.pagination).toEqual({
@@ -129,7 +156,7 @@ describe('GET /api/leads', () => {
   });
 
   it('supports combined search across name, email, and phone', async () => {
-    const response = await request(app).get('/api/leads?search=jane');
+    const response = await authedRequest('get','/api/leads?search=jane');
 
     expect(response.status).toBe(200);
     expect(queryMock).toHaveBeenCalledWith(
@@ -141,7 +168,7 @@ describe('GET /api/leads', () => {
   });
 
   it('supports searchBy=name', async () => {
-    const response = await request(app).get(
+    const response = await authedRequest('get',
       '/api/leads?search=jane&searchBy=name',
     );
 
@@ -153,7 +180,7 @@ describe('GET /api/leads', () => {
   });
 
   it('supports searchBy=email', async () => {
-    const response = await request(app).get(
+    const response = await authedRequest('get',
       '/api/leads?search=jane@example.com&searchBy=email',
     );
 
@@ -165,7 +192,7 @@ describe('GET /api/leads', () => {
   });
 
   it('supports searchBy=phone', async () => {
-    const response = await request(app).get(
+    const response = await authedRequest('get',
       '/api/leads?search=9876&searchBy=phone',
     );
 
@@ -177,7 +204,7 @@ describe('GET /api/leads', () => {
   });
 
   it('returns 400 for invalid searchBy', async () => {
-    const response = await request(app).get(
+    const response = await authedRequest('get',
       '/api/leads?search=jane&searchBy=company',
     );
 
@@ -187,14 +214,14 @@ describe('GET /api/leads', () => {
   });
 
   it('returns an empty array when search has no matches', async () => {
-    const response = await request(app).get('/api/leads?search=nomatch');
+    const response = await authedRequest('get','/api/leads?search=nomatch');
 
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([]);
   });
 
   it('orders by created_at DESC when no sort parameters are provided', async () => {
-    await request(app).get('/api/leads');
+    await authedRequest('get','/api/leads');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY created_at DESC/),
@@ -203,7 +230,7 @@ describe('GET /api/leads', () => {
   });
 
   it('sorts by name ascending', async () => {
-    await request(app).get('/api/leads?sortBy=name&sortOrder=asc');
+    await authedRequest('get','/api/leads?sortBy=name&sortOrder=asc');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY name ASC, created_at DESC/),
@@ -212,7 +239,7 @@ describe('GET /api/leads', () => {
   });
 
   it('sorts by name descending', async () => {
-    await request(app).get('/api/leads?sortBy=name&sortOrder=desc');
+    await authedRequest('get','/api/leads?sortBy=name&sortOrder=desc');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY name DESC, created_at DESC/),
@@ -221,7 +248,7 @@ describe('GET /api/leads', () => {
   });
 
   it('sorts by email ascending', async () => {
-    await request(app).get('/api/leads?sortBy=email&sortOrder=asc');
+    await authedRequest('get','/api/leads?sortBy=email&sortOrder=asc');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY email ASC, created_at DESC/),
@@ -230,7 +257,7 @@ describe('GET /api/leads', () => {
   });
 
   it('sorts by email descending', async () => {
-    await request(app).get('/api/leads?sortBy=email&sortOrder=desc');
+    await authedRequest('get','/api/leads?sortBy=email&sortOrder=desc');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/ORDER BY email DESC, created_at DESC/),
@@ -239,7 +266,7 @@ describe('GET /api/leads', () => {
   });
 
   it('sorts by status ascending using workflow order', async () => {
-    await request(app).get('/api/leads?sortBy=status&sortOrder=asc');
+    await authedRequest('get','/api/leads?sortBy=status&sortOrder=asc');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(
@@ -250,7 +277,7 @@ describe('GET /api/leads', () => {
   });
 
   it('sorts by status descending using reversed workflow order', async () => {
-    await request(app).get('/api/leads?sortBy=status&sortOrder=desc');
+    await authedRequest('get','/api/leads?sortBy=status&sortOrder=desc');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(
@@ -261,14 +288,14 @@ describe('GET /api/leads', () => {
   });
 
   it('returns 400 for invalid sortBy', async () => {
-    const response = await request(app).get('/api/leads?sortBy=created_at');
+    const response = await authedRequest('get','/api/leads?sortBy=created_at');
 
     expect(response.status).toBe(400);
     expect(response.body.error.message).toBe('Validation failed');
   });
 
   it('returns 400 for invalid sortOrder', async () => {
-    const response = await request(app).get(
+    const response = await authedRequest('get',
       '/api/leads?sortBy=name&sortOrder=up',
     );
 
@@ -277,7 +304,7 @@ describe('GET /api/leads', () => {
   });
 
   it('combines search with sorting', async () => {
-    await request(app).get(
+    await authedRequest('get',
       '/api/leads?search=jane&searchBy=name&sortBy=email&sortOrder=asc',
     );
 
@@ -292,8 +319,7 @@ describe('GET /api/leads', () => {
 
 describe('PATCH /api/leads/:id/status', () => {
   it('returns 200 for valid UUID and status', async () => {
-    const response = await request(app)
-      .patch(`/api/leads/${LEAD_ID}/status`)
+    const response = await authedRequest('patch',`/api/leads/${LEAD_ID}/status`)
       .send({ status: 'contacted' });
 
     expect(response.status).toBe(200);
@@ -302,8 +328,7 @@ describe('PATCH /api/leads/:id/status', () => {
   });
 
   it('returns 400 for invalid UUID', async () => {
-    const response = await request(app)
-      .patch('/api/leads/not-a-uuid/status')
+    const response = await authedRequest('patch','/api/leads/not-a-uuid/status')
       .send({ status: 'contacted' });
 
     expect(response.status).toBe(400);
@@ -312,8 +337,7 @@ describe('PATCH /api/leads/:id/status', () => {
   });
 
   it('returns 400 for invalid status', async () => {
-    const response = await request(app)
-      .patch(`/api/leads/${LEAD_ID}/status`)
+    const response = await authedRequest('patch',`/api/leads/${LEAD_ID}/status`)
       .send({ status: 'archived' });
 
     expect(response.status).toBe(400);
@@ -321,8 +345,7 @@ describe('PATCH /api/leads/:id/status', () => {
   });
 
   it('returns 404 when the lead does not exist', async () => {
-    const response = await request(app)
-      .patch(`/api/leads/${MISSING_LEAD_ID}/status`)
+    const response = await authedRequest('patch',`/api/leads/${MISSING_LEAD_ID}/status`)
       .send({ status: 'contacted' });
 
     expect(response.status).toBe(404);
@@ -333,8 +356,7 @@ describe('PATCH /api/leads/:id/status', () => {
   });
 
   it('returns the updated lead shape on success', async () => {
-    const response = await request(app)
-      .patch(`/api/leads/${LEAD_ID}/status`)
+    const response = await authedRequest('patch',`/api/leads/${LEAD_ID}/status`)
       .send({ status: 'qualified' });
 
     expect(response.status).toBe(200);
@@ -352,8 +374,7 @@ describe('PATCH /api/leads/:id/status', () => {
 
 describe('PUT /api/leads/:id', () => {
   it('returns 200 and updates lead fields', async () => {
-    const response = await request(app)
-      .put(`/api/leads/${LEAD_ID}`)
+    const response = await authedRequest('put',`/api/leads/${LEAD_ID}`)
       .send({
         name: 'Updated Name',
         email: 'updated@example.com',
@@ -383,8 +404,7 @@ describe('PUT /api/leads/:id', () => {
   });
 
   it('normalizes empty phone to null in the SQL params', async () => {
-    const response = await request(app)
-      .put(`/api/leads/${LEAD_ID}`)
+    const response = await authedRequest('put',`/api/leads/${LEAD_ID}`)
       .send({
         name: 'Updated Name',
         email: 'updated@example.com',
@@ -399,8 +419,7 @@ describe('PUT /api/leads/:id', () => {
   });
 
   it('returns 400 for invalid UUID', async () => {
-    const response = await request(app)
-      .put('/api/leads/not-a-uuid')
+    const response = await authedRequest('put','/api/leads/not-a-uuid')
       .send({
         name: 'Jane Doe',
         email: 'jane@example.com',
@@ -411,8 +430,7 @@ describe('PUT /api/leads/:id', () => {
   });
 
   it('returns 400 for invalid email', async () => {
-    const response = await request(app)
-      .put(`/api/leads/${LEAD_ID}`)
+    const response = await authedRequest('put',`/api/leads/${LEAD_ID}`)
       .send({
         name: 'Jane Doe',
         email: 'not-an-email',
@@ -423,22 +441,19 @@ describe('PUT /api/leads/:id', () => {
   });
 
   it('returns 400 for missing or empty name', async () => {
-    const missingName = await request(app)
-      .put(`/api/leads/${LEAD_ID}`)
+    const missingName = await authedRequest('put', `/api/leads/${LEAD_ID}`)
       .send({ email: 'jane@example.com' });
 
     expect(missingName.status).toBe(400);
 
-    const emptyName = await request(app)
-      .put(`/api/leads/${LEAD_ID}`)
+    const emptyName = await authedRequest('put', `/api/leads/${LEAD_ID}`)
       .send({ name: '   ', email: 'jane@example.com' });
 
     expect(emptyName.status).toBe(400);
   });
 
   it('returns 400 for invalid status', async () => {
-    const response = await request(app)
-      .put(`/api/leads/${LEAD_ID}`)
+    const response = await authedRequest('put',`/api/leads/${LEAD_ID}`)
       .send({
         name: 'Jane Doe',
         email: 'jane@example.com',
@@ -450,8 +465,7 @@ describe('PUT /api/leads/:id', () => {
   });
 
   it('returns 404 when the lead does not exist', async () => {
-    const response = await request(app)
-      .put(`/api/leads/${MISSING_LEAD_ID}`)
+    const response = await authedRequest('put',`/api/leads/${MISSING_LEAD_ID}`)
       .send({
         name: 'Jane Doe',
         email: 'jane@example.com',
@@ -467,8 +481,7 @@ describe('PUT /api/leads/:id', () => {
   it('returns 500 when the database fails', async () => {
     queryMock.mockRejectedValueOnce(new Error('connection refused'));
 
-    const response = await request(app)
-      .put(`/api/leads/${LEAD_ID}`)
+    const response = await authedRequest('put',`/api/leads/${LEAD_ID}`)
       .send({
         name: 'Jane Doe',
         email: 'jane@example.com',
@@ -484,7 +497,7 @@ describe('PUT /api/leads/:id', () => {
 
 describe('DELETE /api/leads/:id', () => {
   it('returns 200 when the lead is deleted', async () => {
-    const response = await request(app).delete(`/api/leads/${LEAD_ID}`);
+    const response = await authedRequest('delete',`/api/leads/${LEAD_ID}`);
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -498,14 +511,14 @@ describe('DELETE /api/leads/:id', () => {
   });
 
   it('returns 400 for invalid UUID', async () => {
-    const response = await request(app).delete('/api/leads/not-a-uuid');
+    const response = await authedRequest('delete','/api/leads/not-a-uuid');
 
     expect(response.status).toBe(400);
     expect(response.body.error.message).toBe('Validation failed');
   });
 
   it('returns 404 when the lead does not exist', async () => {
-    const response = await request(app).delete(
+    const response = await authedRequest('delete',
       `/api/leads/${MISSING_LEAD_ID}`,
     );
 
@@ -519,7 +532,7 @@ describe('DELETE /api/leads/:id', () => {
   it('returns 500 when the database fails', async () => {
     queryMock.mockRejectedValueOnce(new Error('connection refused'));
 
-    const response = await request(app).delete(`/api/leads/${LEAD_ID}`);
+    const response = await authedRequest('delete',`/api/leads/${LEAD_ID}`);
 
     expect(response.status).toBe(500);
     expect(response.body).toEqual({

@@ -9,6 +9,28 @@
   border-bottom: 1px solid var(--border);
 }
 
+.lead-tracker__header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.lead-tracker__logout {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text-h);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lead-tracker__logout:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .lead-tracker__eyebrow {
   margin: 0 0 0.35rem;
   font-size: 0.8125rem;

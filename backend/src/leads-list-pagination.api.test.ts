@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.hoisted(() => {
+  process.env.JWT_SECRET = 'test-jwt-secret-for-vitest';
+});
+
 const { queryMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
 }));
@@ -16,8 +20,14 @@ import {
   createMockLeadRow,
   installDefaultQueryMock,
 } from './test/mock-query.js';
+import { createAuthCookieHeader } from './test/auth-test-helpers.js';
 
 const app = createApp();
+const authCookie = createAuthCookieHeader();
+
+function authedGet(path: string) {
+  return request(app).get(path).set('Cookie', authCookie);
+}
 
 beforeEach(() => {
   installDefaultQueryMock(queryMock);
@@ -25,7 +35,7 @@ beforeEach(() => {
 
 describe('GET /api/leads pagination and filters', () => {
   it('uses default page 1 and limit 20 when pagination params are omitted', async () => {
-    const response = await request(app).get('/api/leads');
+    const response = await authedGet('/api/leads');
 
     expect(response.status).toBe(200);
     expect(response.body.pagination).toEqual({
@@ -41,7 +51,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('supports custom page and limit', async () => {
-    const response = await request(app).get('/api/leads?page=2&limit=1');
+    const response = await authedGet('/api/leads?page=2&limit=1');
 
     expect(response.status).toBe(200);
     expect(response.body.pagination).toEqual({
@@ -58,21 +68,21 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('returns 400 when limit exceeds the maximum', async () => {
-    const response = await request(app).get('/api/leads?limit=101');
+    const response = await authedGet('/api/leads?limit=101');
 
     expect(response.status).toBe(400);
     expect(response.body.error.message).toBe('Validation failed');
   });
 
   it('returns 400 for invalid page values', async () => {
-    const response = await request(app).get('/api/leads?page=0');
+    const response = await authedGet('/api/leads?page=0');
 
     expect(response.status).toBe(400);
     expect(response.body.error.message).toBe('Validation failed');
   });
 
   it('returns an empty page when page is beyond total pages', async () => {
-    const response = await request(app).get('/api/leads?page=99&limit=20');
+    const response = await authedGet('/api/leads?page=99&limit=20');
 
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([]);
@@ -98,7 +108,7 @@ describe('GET /api/leads pagination and filters', () => {
       };
     });
 
-    const response = await request(app).get('/api/leads?status=qualified');
+    const response = await authedGet('/api/leads?status=qualified');
 
     expect(response.status).toBe(200);
     expect(response.body.pagination.total).toBe(5);
@@ -106,7 +116,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('filters by status', async () => {
-    await request(app).get('/api/leads?status=contacted');
+    await authedGet('/api/leads?status=contacted');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(/WHERE status = \$1[\s\S]*LIMIT \$2/),
@@ -115,7 +125,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('filters by createdFrom', async () => {
-    await request(app).get('/api/leads?createdFrom=2026-03-01');
+    await authedGet('/api/leads?createdFrom=2026-03-01');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining('created_at >= $1::timestamptz'),
@@ -124,7 +134,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('filters by createdTo inclusively', async () => {
-    await request(app).get('/api/leads?createdTo=2026-03-31');
+    await authedGet('/api/leads?createdTo=2026-03-31');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining(
@@ -135,7 +145,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('filters by createdFrom and createdTo together', async () => {
-    await request(app).get(
+    await authedGet(
       '/api/leads?createdFrom=2026-03-01&createdTo=2026-03-31',
     );
 
@@ -148,14 +158,14 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('returns 400 for invalid date values', async () => {
-    const response = await request(app).get('/api/leads?createdFrom=03-01-2026');
+    const response = await authedGet('/api/leads?createdFrom=03-01-2026');
 
     expect(response.status).toBe(400);
     expect(response.body.error.message).toBe('Validation failed');
   });
 
   it('returns 400 when createdFrom is after createdTo', async () => {
-    const response = await request(app).get(
+    const response = await authedGet(
       '/api/leads?createdFrom=2026-03-31&createdTo=2026-03-01',
     );
 
@@ -164,7 +174,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('combines search with filters', async () => {
-    await request(app).get(
+    await authedGet(
       '/api/leads?search=jane&searchBy=name&status=new',
     );
 
@@ -177,7 +187,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('combines filters with sorting', async () => {
-    await request(app).get(
+    await authedGet(
       '/api/leads?status=qualified&sortBy=email&sortOrder=asc',
     );
 
@@ -190,7 +200,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('combines pagination with sorting', async () => {
-    await request(app).get(
+    await authedGet(
       '/api/leads?page=2&limit=10&sortBy=status&sortOrder=desc',
     );
 
@@ -203,7 +213,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('combines pagination with search', async () => {
-    await request(app).get('/api/leads?search=555&searchBy=phone&page=3&limit=5');
+    await authedGet('/api/leads?search=555&searchBy=phone&page=3&limit=5');
 
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringMatching(
@@ -214,7 +224,7 @@ describe('GET /api/leads pagination and filters', () => {
   });
 
   it('combines search, filters, sorting, and pagination', async () => {
-    await request(app).get(
+    await authedGet(
       '/api/leads?search=jane&searchBy=email&status=contacted&createdFrom=2026-03-01&createdTo=2026-03-31&sortBy=name&sortOrder=asc&page=2&limit=15',
     );
 

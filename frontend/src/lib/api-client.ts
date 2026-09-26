@@ -20,6 +20,7 @@ export async function apiRequest(
   const { headers, ...rest } = options;
 
   return fetch(resolveUrl(path), {
+    credentials: 'include',
     ...rest,
     headers: {
       Accept: 'application/json',

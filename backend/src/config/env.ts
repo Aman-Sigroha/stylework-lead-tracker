@@ -35,7 +35,19 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   corsOrigin: parseCorsOrigin(process.env.CORS_ORIGIN),
   databaseUrl: process.env.DATABASE_URL,
+  jwtSecret: process.env.JWT_SECRET ?? '',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
 };
+
+export function requireJwtSecret(): string {
+  const secret = env.jwtSecret.trim();
+
+  if (secret === '') {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+
+  return secret;
+}
 
 export function requireDatabaseUrl(): string {
   const databaseUrl = env.databaseUrl;

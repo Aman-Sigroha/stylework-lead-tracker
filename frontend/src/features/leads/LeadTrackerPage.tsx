@@ -13,6 +13,7 @@ import { SuccessToast } from './components/SuccessToast.tsx';
 import { InlineErrorBanner } from './components/InlineErrorBanner.tsx';
 import { useDebouncedValue } from './hooks/useDebouncedValue.ts';
 import { useLeadsQuery } from './hooks/useLeadsQuery.ts';
+import { useLogoutMutation } from '../auth/hooks/useLogoutMutation.ts';
 import { useUpdateLeadStatusMutation } from './hooks/useUpdateLeadStatusMutation.ts';
 import { ApiRequestError } from '../../lib/api-errors.js';
 import { getStatusUpdateErrorMessage } from './lib/status-update-errors.ts';
@@ -43,6 +44,7 @@ export function LeadTrackerPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
+  const logoutMutation = useLogoutMutation();
   const updateLeadStatusMutation = useUpdateLeadStatusMutation();
   const { data, isLoading, isError, refetch, isFetching } = useLeadsQuery({
     search: debouncedSearch,
@@ -166,7 +168,19 @@ export function LeadTrackerPage() {
       ) : null}
 
       <header className="lead-tracker__header">
-        <p className="lead-tracker__eyebrow">Stylework</p>
+        <div className="lead-tracker__header-top">
+          <p className="lead-tracker__eyebrow">Stylework</p>
+          <button
+            type="button"
+            className="lead-tracker__logout"
+            onClick={() => {
+              logoutMutation.mutate();
+            }}
+            disabled={logoutMutation.isPending}
+          >
+            {logoutMutation.isPending ? 'Signing out...' : 'Log out'}
+          </button>
+        </div>
         <h1 className="lead-tracker__title">Lead Tracker</h1>
         <p className="lead-tracker__subtitle">
           Manage inbound leads from one place.

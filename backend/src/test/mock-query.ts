@@ -1,4 +1,9 @@
 import type { Mock } from 'vitest';
+import {
+  TEST_PASSWORD_HASH,
+  TEST_USER_EMAIL,
+  TEST_USER_ID,
+} from './auth-test-helpers.js';
 
 export const LEAD_ID = '550e8400-e29b-41d4-a716-446655440000';
 export const MISSING_LEAD_ID = '00000000-0000-0000-0000-000000000000';
@@ -105,6 +110,33 @@ export function installDefaultQueryMock(queryMock: Mock<QueryFn>): void {
 
       return {
         rows: [createMockLeadRow({ id })],
+        rowCount: 1,
+      };
+    }
+
+    if (text.includes('FROM users')) {
+      const email = String(params?.[0] ?? '');
+
+      if (email === TEST_USER_EMAIL) {
+        return {
+          rows: [
+            {
+              id: TEST_USER_ID,
+              email: TEST_USER_EMAIL,
+              password_hash: TEST_PASSWORD_HASH,
+            } as unknown as MockLeadRow,
+          ],
+          rowCount: 1,
+        };
+      }
+
+      return { rows: [], rowCount: 0 };
+    }
+
+    if (text.includes('INSERT INTO users')) {
+      const email = String(params?.[0] ?? '');
+      return {
+        rows: [{ id: TEST_USER_ID, email } as unknown as MockLeadRow],
         rowCount: 1,
       };
     }

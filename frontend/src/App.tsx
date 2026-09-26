@@ -1,9 +1,9 @@
-import { LeadTrackerPage } from './features/leads/LeadTrackerPage.tsx';
+import { AuthGate } from './features/auth/AuthGate.tsx';
 
 function App() {
   return (
     <div className="app-shell">
-      <LeadTrackerPage />
+      <AuthGate />
     </div>
   );
 }
