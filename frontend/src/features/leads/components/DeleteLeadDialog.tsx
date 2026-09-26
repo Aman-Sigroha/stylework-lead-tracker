@@ -9,6 +9,11 @@ type DeleteLeadDialogProps = {
   onDeleted: () => void;
 };
 
+type DeleteLeadError = {
+  leadId: string;
+  message: string;
+};
+
 export function DeleteLeadDialog({
   lead,
   onClose,
@@ -19,8 +24,12 @@ export function DeleteLeadDialog({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const messageId = useId();
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<DeleteLeadError | null>(null);
   const isOpen = lead !== null;
+  const errorMessage =
+    lead !== null && deleteError?.leadId === lead.id
+      ? deleteError.message
+      : null;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -37,17 +46,12 @@ export function DeleteLeadDialog({
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (isOpen) {
-      setErrorMessage(null);
-    }
-  }, [isOpen, lead?.id]);
-
   const handleRequestClose = () => {
     if (isPending) {
       return;
     }
 
+    setDeleteError(null);
     onClose();
   };
 
@@ -56,14 +60,17 @@ export function DeleteLeadDialog({
       return;
     }
 
-    setErrorMessage(null);
+    setDeleteError(null);
 
     deleteLeadMutation.mutate(lead.id, {
       onSuccess: () => {
         onDeleted();
       },
       onError: (error) => {
-        setErrorMessage(getDeleteLeadErrorMessage(error));
+        setDeleteError({
+          leadId: lead.id,
+          message: getDeleteLeadErrorMessage(error),
+        });
       },
     });
   };
@@ -80,6 +87,7 @@ export function DeleteLeadDialog({
           return;
         }
 
+        setDeleteError(null);
         onClose();
       }}
       onClose={handleRequestClose}
