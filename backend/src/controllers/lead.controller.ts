@@ -9,6 +9,7 @@ import {
 } from '../schemas/update-lead-status.schema.js';
 import {
   createLead,
+  deleteLead,
   listLeads,
   updateLead,
   updateLeadStatus,
@@ -212,6 +213,53 @@ export async function updateLeadHandler(
       success: false,
       error: {
         message: 'Failed to update lead',
+      },
+    });
+  }
+}
+
+export async function deleteLeadHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const idParsed = z
+    .object({ id: leadIdParamSchema })
+    .safeParse(req.params);
+
+  if (!idParsed.success) {
+    res.status(400).json({
+      success: false,
+      error: {
+        message: 'Validation failed',
+        details: formatValidationErrors(idParsed.error.issues),
+      },
+    });
+    return;
+  }
+
+  try {
+    const deleted = await deleteLead(idParsed.data.id);
+
+    if (!deleted) {
+      res.status(404).json({
+        success: false,
+        error: {
+          message: 'Lead not found',
+        },
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Lead deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete lead failed:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to delete lead',
       },
     });
   }

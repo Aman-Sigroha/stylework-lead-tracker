@@ -148,3 +148,14 @@ export async function updateLead(
 
   return toLead(row);
 }
+
+export async function deleteLead(id: string): Promise<boolean> {
+  const result = await query<{ id: string }>(
+    `DELETE FROM leads
+     WHERE id = $1
+     RETURNING id`,
+    [id],
+  );
+
+  return result.rows[0] !== undefined;
+}

@@ -96,6 +96,19 @@ export function installDefaultQueryMock(queryMock: Mock<QueryFn>): void {
       };
     }
 
+    if (text.includes('DELETE FROM leads')) {
+      const id = String(params?.[0]);
+
+      if (id === MISSING_LEAD_ID) {
+        return { rows: [], rowCount: 0 };
+      }
+
+      return {
+        rows: [createMockLeadRow({ id })],
+        rowCount: 1,
+      };
+    }
+
     if (text.includes('FROM leads')) {
       if (text.includes('WHERE')) {
         const pattern = String(params?.[0] ?? '');

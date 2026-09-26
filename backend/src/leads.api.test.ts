@@ -379,3 +379,50 @@ describe('PUT /api/leads/:id', () => {
     });
   });
 });
+
+describe('DELETE /api/leads/:id', () => {
+  it('returns 200 when the lead is deleted', async () => {
+    const response = await request(app).delete(`/api/leads/${LEAD_ID}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      message: 'Lead deleted successfully',
+    });
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM leads'),
+      [LEAD_ID],
+    );
+  });
+
+  it('returns 400 for invalid UUID', async () => {
+    const response = await request(app).delete('/api/leads/not-a-uuid');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Validation failed');
+  });
+
+  it('returns 404 when the lead does not exist', async () => {
+    const response = await request(app).delete(
+      `/api/leads/${MISSING_LEAD_ID}`,
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      success: false,
+      error: { message: 'Lead not found' },
+    });
+  });
+
+  it('returns 500 when the database fails', async () => {
+    queryMock.mockRejectedValueOnce(new Error('connection refused'));
+
+    const response = await request(app).delete(`/api/leads/${LEAD_ID}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      success: false,
+      error: { message: 'Failed to delete lead' },
+    });
+  });
+});
