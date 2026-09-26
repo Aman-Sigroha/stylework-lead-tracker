@@ -9,6 +9,7 @@ import type {
 } from '../../../types/lead.js';
 import { buildExportLeadsParams } from '../lib/build-export-params.js';
 import { InlineErrorBanner } from './InlineErrorBanner.tsx';
+import { LeadImportButton } from './LeadImportButton.tsx';
 
 type LeadExportButtonProps = {
   search: string;
@@ -18,9 +19,13 @@ type LeadExportButtonProps = {
   statusFilter: LeadStatusFilter;
   createdFrom: string;
   createdTo: string;
+  onLeadsImported: (importedCount: number) => void;
 };
 
-export function LeadExportButton(props: LeadExportButtonProps) {
+export function LeadExportButton({
+  onLeadsImported,
+  ...props
+}: LeadExportButtonProps) {
   const [isExportingCsv, setIsExportingCsv] = useState(false);
   const [isExportingXlsx, setIsExportingXlsx] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -87,6 +92,7 @@ export function LeadExportButton(props: LeadExportButtonProps) {
         >
           {isExportingXlsx ? 'Exporting...' : 'Export Excel'}
         </button>
+        <LeadImportButton onImported={onLeadsImported} />
       </div>
     </div>
   );

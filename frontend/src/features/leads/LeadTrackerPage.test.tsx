@@ -28,6 +28,8 @@ const {
   updateLeadStatus,
   exportLeadsCsv,
   exportLeadsXlsx,
+  previewLeadImport,
+  confirmLeadImport,
 } = vi.hoisted(() => ({
   fetchLeads: vi.fn(),
   createLead: vi.fn(),
@@ -36,6 +38,8 @@ const {
   updateLeadStatus: vi.fn(),
   exportLeadsCsv: vi.fn(),
   exportLeadsXlsx: vi.fn(),
+  previewLeadImport: vi.fn(),
+  confirmLeadImport: vi.fn(),
 }));
 
 vi.mock('./api/leads-api.js', () => ({
@@ -46,6 +50,11 @@ vi.mock('./api/leads-api.js', () => ({
   updateLeadStatus,
   exportLeadsCsv,
   exportLeadsXlsx,
+}));
+
+vi.mock('./api/leads-import-api.js', () => ({
+  previewLeadImport,
+  confirmLeadImport,
 }));
 
 function getSearchSection() {
@@ -1326,6 +1335,178 @@ describe('LeadTrackerPage', () => {
       expect(
         await within(getSearchSection()).findByText('Failed to export leads'),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('CSV import', () => {
+    const importCsv = `${'name,email,phone,status\n'}Jane,jane@example.com,,new`;
+
+    function getImportButton() {
+      return within(getSearchSection()).getByRole('button', {
+        name: 'Import CSV',
+      });
+    }
+
+    function getImportFileInput() {
+      return within(getSearchSection()).getByLabelText('Import CSV file');
+    }
+
+    beforeEach(() => {
+      confirmLeadImport.mockResolvedValue({ importedCount: 1, leads: [] });
+    });
+
+    it('renders the Import CSV button', async () => {
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      expect(getImportButton()).toBeInTheDocument();
+    });
+
+    it('shows preview counts and validation errors', async () => {
+      const user = userEvent.setup();
+      previewLeadImport.mockResolvedValue({
+        totalRows: 2,
+        validRows: 1,
+        invalidRows: 1,
+        errors: [
+          { row: 3, field: 'email', message: 'Invalid email address' },
+        ],
+        validLeads: [
+          { name: 'Jane', email: 'jane@example.com', status: 'new' },
+        ],
+      });
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      const file = new File([importCsv], 'leads.csv', { type: 'text/csv' });
+      await user.upload(getImportFileInput(), file);
+
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Import CSV preview',
+      });
+      expect(within(dialog).getByText('Total rows')).toBeInTheDocument();
+      expect(within(dialog).getByText('Valid rows')).toBeInTheDocument();
+      expect(within(dialog).getByText('Invalid rows')).toBeInTheDocument();
+      expect(
+        within(dialog).getByText('Row 3, email: Invalid email address'),
+      ).toBeInTheDocument();
+    });
+
+    it('disables import when there are zero valid rows', async () => {
+      const user = userEvent.setup();
+      previewLeadImport.mockResolvedValue({
+        totalRows: 1,
+        validRows: 0,
+        invalidRows: 1,
+        errors: [{ row: 2, field: 'name', message: 'Name is required' }],
+        validLeads: [],
+      });
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.upload(
+        getImportFileInput(),
+        new File([importCsv], 'leads.csv', { type: 'text/csv' }),
+      );
+
+      await screen.findByRole('dialog', { name: 'Import CSV preview' });
+      expect(
+        screen.getByRole('button', { name: 'Import Valid Rows' }),
+      ).toBeDisabled();
+    });
+
+    it('confirms import, refetches leads, and resets to page 1', async () => {
+      const user = userEvent.setup();
+      previewLeadImport.mockResolvedValue({
+        totalRows: 1,
+        validRows: 1,
+        invalidRows: 0,
+        errors: [],
+        validLeads: [
+          { name: 'Jane', email: 'jane@example.com', status: 'new' },
+        ],
+      });
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.upload(
+        getImportFileInput(),
+        new File([importCsv], 'leads.csv', { type: 'text/csv' }),
+      );
+      await screen.findByRole('dialog', { name: 'Import CSV preview' });
+
+      await user.click(screen.getByRole('button', { name: 'Import Valid Rows' }));
+
+      await waitFor(() => {
+        expect(confirmLeadImport).toHaveBeenCalledWith([
+          { name: 'Jane', email: 'jane@example.com', status: 'new' },
+        ]);
+      });
+      expect(
+        await screen.findByText('Successfully imported 1 lead.'),
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(listQuery({ page: 1 }));
+      });
+    });
+
+    it('shows preview API errors', async () => {
+      const user = userEvent.setup();
+      previewLeadImport.mockRejectedValue(
+        new ApiRequestError('Malformed CSV file', 400, {
+          success: false,
+          error: { message: 'Malformed CSV file' },
+        }),
+      );
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.upload(
+        getImportFileInput(),
+        new File([importCsv], 'leads.csv', { type: 'text/csv' }),
+      );
+
+      expect(
+        await within(getSearchSection()).findByText('Malformed CSV file'),
+      ).toBeInTheDocument();
+    });
+
+    it('disables the import button while preview is loading', async () => {
+      const user = userEvent.setup();
+      let resolvePreview: ((value: unknown) => void) | undefined;
+      previewLeadImport.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvePreview = resolve;
+          }),
+      );
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      const importButton = getImportButton();
+      void user.upload(
+        getImportFileInput(),
+        new File([importCsv], 'leads.csv', { type: 'text/csv' }),
+      );
+
+      await waitFor(() => {
+        expect(importButton).toBeDisabled();
+      });
+
+      resolvePreview?.({
+        totalRows: 1,
+        validRows: 1,
+        invalidRows: 0,
+        errors: [],
+        validLeads: [
+          { name: 'Jane', email: 'jane@example.com', status: 'new' },
+        ],
+      });
     });
   });
 });

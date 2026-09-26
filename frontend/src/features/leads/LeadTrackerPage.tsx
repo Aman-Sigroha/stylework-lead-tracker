@@ -213,6 +213,12 @@ export function LeadTrackerPage() {
             statusFilter={statusFilter}
             createdFrom={createdFrom}
             createdTo={createdTo}
+            onLeadsImported={(importedCount) => {
+              setPage(1);
+              setSuccessMessage(
+                `Successfully imported ${importedCount} lead${importedCount === 1 ? '' : 's'}.`,
+              );
+            }}
           />
         </section>
 
