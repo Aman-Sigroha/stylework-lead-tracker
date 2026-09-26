@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { exportLeadsCsv } from './leads-api.js';
+import { exportLeadsCsv, exportLeadsXlsx } from './leads-api.js';
 
 const { apiRequestBlobMock, downloadResponseBlobMock } = vi.hoisted(() => ({
   apiRequestBlobMock: vi.fn(),
@@ -75,5 +75,57 @@ describe('exportLeadsCsv', () => {
     );
 
     await expect(exportLeadsCsv()).rejects.toThrow('Export failed');
+  });
+});
+
+describe('exportLeadsXlsx', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    downloadResponseBlobMock.mockResolvedValue(undefined);
+  });
+
+  it('requests the XLSX export endpoint without page or limit', async () => {
+    apiRequestBlobMock.mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: {
+          'Content-Type':
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        },
+      }),
+    );
+
+    await exportLeadsXlsx({
+      search: 'jane',
+      sortBy: 'email',
+      sortOrder: 'desc',
+    });
+
+    expect(apiRequestBlobMock).toHaveBeenCalledWith(
+      '/leads/export.xlsx?search=jane&sortBy=email&sortOrder=desc',
+    );
+  });
+
+  it('downloads the blob response on success', async () => {
+    const response = new Response('xlsx', { status: 200 });
+    apiRequestBlobMock.mockResolvedValue(response);
+
+    await exportLeadsXlsx();
+
+    expect(downloadResponseBlobMock).toHaveBeenCalledWith(response);
+  });
+
+  it('throws when the export fails', async () => {
+    apiRequestBlobMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: { message: 'Excel export failed' },
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(exportLeadsXlsx()).rejects.toThrow('Excel export failed');
   });
 });

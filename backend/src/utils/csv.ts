@@ -1,4 +1,5 @@
 import type { Lead } from '../types/lead.types.js';
+import { buildDatedLeadsExportFilename } from './export-filename.js';
 
 const CSV_HEADER = 'id,name,email,phone,status,createdAt,updatedAt';
 
@@ -32,9 +33,5 @@ export function formatLeadsCsv(leads: Lead[]): string {
 }
 
 export function buildLeadsExportFilename(date: Date = new Date()): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-
-  return `leads-${year}-${month}-${day}.csv`;
+  return buildDatedLeadsExportFilename('csv', date);
 }

@@ -3,6 +3,7 @@ import {
   createLeadHandler,
   deleteLeadHandler,
   exportLeadsHandler,
+  exportLeadsXlsxHandler,
   listLeadsHandler,
   updateLeadHandler,
   updateLeadStatusHandler,
@@ -14,6 +15,7 @@ export const leadRouter = Router();
 leadRouter.use(requireAuth);
 
 leadRouter.get('/leads/export.csv', exportLeadsHandler);
+leadRouter.get('/leads/export.xlsx', exportLeadsXlsxHandler);
 leadRouter.get('/leads', listLeadsHandler);
 leadRouter.post('/leads', createLeadHandler);
 leadRouter.put('/leads/:id', updateLeadHandler);

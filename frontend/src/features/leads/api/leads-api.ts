@@ -67,6 +67,29 @@ export async function exportLeadsCsv(params: ExportLeadsParams = {}): Promise<vo
   await downloadResponseBlob(response);
 }
 
+export async function exportLeadsXlsx(
+  params: ExportLeadsParams = {},
+): Promise<void> {
+  const queryString = buildLeadsQueryString(params, {
+    includePagination: false,
+  });
+  const response = await apiRequestBlob(
+    `/leads/export.xlsx${queryString === '' ? '' : queryString}`,
+  );
+
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null);
+
+    throw new ApiRequestError(
+      getApiErrorMessage(body, 'Failed to export leads'),
+      response.status,
+      body,
+    );
+  }
+
+  await downloadResponseBlob(response);
+}
+
 export async function fetchLeads(
   params: FetchLeadsParams = {},
 ): Promise<FetchLeadsResult> {

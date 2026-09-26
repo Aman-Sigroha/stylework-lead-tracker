@@ -27,6 +27,7 @@ const {
   deleteLead,
   updateLeadStatus,
   exportLeadsCsv,
+  exportLeadsXlsx,
 } = vi.hoisted(() => ({
   fetchLeads: vi.fn(),
   createLead: vi.fn(),
@@ -34,6 +35,7 @@ const {
   deleteLead: vi.fn(),
   updateLeadStatus: vi.fn(),
   exportLeadsCsv: vi.fn(),
+  exportLeadsXlsx: vi.fn(),
 }));
 
 vi.mock('./api/leads-api.js', () => ({
@@ -43,6 +45,7 @@ vi.mock('./api/leads-api.js', () => ({
   deleteLead,
   updateLeadStatus,
   exportLeadsCsv,
+  exportLeadsXlsx,
 }));
 
 function getSearchSection() {
@@ -1099,22 +1102,30 @@ describe('LeadTrackerPage', () => {
     });
   });
 
-  describe('CSV export', () => {
+  describe('lead export', () => {
     beforeEach(() => {
       exportLeadsCsv.mockResolvedValue(undefined);
+      exportLeadsXlsx.mockResolvedValue(undefined);
     });
 
-    function getExportButton() {
+    function getExportCsvButton() {
       return within(getSearchSection()).getByRole('button', {
-        name: /export/i,
+        name: 'Export CSV',
       });
     }
 
-    it('renders the Export CSV button', async () => {
+    function getExportExcelButton() {
+      return within(getSearchSection()).getByRole('button', {
+        name: 'Export Excel',
+      });
+    }
+
+    it('renders the Export CSV and Export Excel buttons', async () => {
       renderLeadTracker();
       await screen.findByText('Jane Doe');
 
-      expect(getExportButton()).toBeInTheDocument();
+      expect(getExportCsvButton()).toBeInTheDocument();
+      expect(getExportExcelButton()).toBeInTheDocument();
     });
 
     it('exports with the current search and searchBy values', async () => {
@@ -1130,7 +1141,7 @@ describe('LeadTrackerPage', () => {
         );
       });
 
-      await user.click(getExportButton());
+      await user.click(getExportCsvButton());
 
       await waitFor(() => {
         expect(exportLeadsCsv).toHaveBeenCalledWith({
@@ -1158,7 +1169,7 @@ describe('LeadTrackerPage', () => {
         '2026-03-31',
       );
 
-      await user.click(getExportButton());
+      await user.click(getExportCsvButton());
 
       await waitFor(() => {
         expect(exportLeadsCsv).toHaveBeenCalledWith({
@@ -1177,7 +1188,7 @@ describe('LeadTrackerPage', () => {
 
       await user.selectOptions(getSortBySelect(), 'email');
       await user.selectOptions(getSortDirectionSelect(), 'asc');
-      await user.click(getExportButton());
+      await user.click(getExportCsvButton());
 
       await waitFor(() => {
         expect(exportLeadsCsv).toHaveBeenCalledWith({
@@ -1195,7 +1206,7 @@ describe('LeadTrackerPage', () => {
       expect(exportArgs.limit).toBeUndefined();
     });
 
-    it('disables the button while export is in progress', async () => {
+    it('disables the CSV button while CSV export is in progress', async () => {
       const user = userEvent.setup();
       let resolveExport: (() => void) | undefined;
       exportLeadsCsv.mockImplementation(
@@ -1208,11 +1219,12 @@ describe('LeadTrackerPage', () => {
       renderLeadTracker();
       await screen.findByText('Jane Doe');
 
-      const exportButton = getExportButton();
+      const exportButton = getExportCsvButton();
       await user.click(exportButton);
 
       expect(exportButton).toBeDisabled();
       expect(exportButton).toHaveTextContent('Exporting...');
+      expect(getExportExcelButton()).not.toBeDisabled();
 
       resolveExport?.();
       await waitFor(() => {
@@ -1220,7 +1232,7 @@ describe('LeadTrackerPage', () => {
       });
     });
 
-    it('shows an error when export fails', async () => {
+    it('shows an error when CSV export fails', async () => {
       const user = userEvent.setup();
       exportLeadsCsv.mockRejectedValue(
         new ApiRequestError('Failed to export leads', 500, {
@@ -1232,7 +1244,84 @@ describe('LeadTrackerPage', () => {
       renderLeadTracker();
       await screen.findByText('Jane Doe');
 
-      await user.click(getExportButton());
+      await user.click(getExportCsvButton());
+
+      expect(
+        await within(getSearchSection()).findByText('Failed to export leads'),
+      ).toBeInTheDocument();
+    });
+
+    it('passes current filters and sorting to Excel export without pagination', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await typeSearchTerm(user, 'jane');
+      await user.selectOptions(getSearchBySelect(), 'email');
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ search: 'jane', searchBy: 'email' }),
+        );
+      });
+      await user.selectOptions(getSortBySelect(), 'status');
+      await user.selectOptions(getSortDirectionSelect(), 'desc');
+      await user.click(getExportExcelButton());
+
+      await waitFor(() => {
+        expect(exportLeadsXlsx).toHaveBeenCalledWith({
+          search: 'jane',
+          searchBy: 'email',
+          sortBy: 'status',
+          sortOrder: 'desc',
+        });
+      });
+
+      const exportArgs = exportLeadsXlsx.mock.calls.at(-1)?.[0] as Record<
+        string,
+        unknown
+      >;
+      expect(exportArgs.page).toBeUndefined();
+      expect(exportArgs.limit).toBeUndefined();
+    });
+
+    it('disables the Excel button while Excel export is in progress', async () => {
+      const user = userEvent.setup();
+      let resolveExport: (() => void) | undefined;
+      exportLeadsXlsx.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveExport = resolve;
+          }),
+      );
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      const exportButton = getExportExcelButton();
+      await user.click(exportButton);
+
+      expect(exportButton).toBeDisabled();
+      expect(exportButton).toHaveTextContent('Exporting...');
+
+      resolveExport?.();
+      await waitFor(() => {
+        expect(exportButton).not.toBeDisabled();
+      });
+    });
+
+    it('shows an error when Excel export fails', async () => {
+      const user = userEvent.setup();
+      exportLeadsXlsx.mockRejectedValue(
+        new ApiRequestError('Failed to export leads', 500, {
+          success: false,
+          error: { message: 'Failed to export leads' },
+        }),
+      );
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.click(getExportExcelButton());
 
       expect(
         await within(getSearchSection()).findByText('Failed to export leads'),

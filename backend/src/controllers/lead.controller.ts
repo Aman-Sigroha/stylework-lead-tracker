@@ -22,6 +22,11 @@ import {
   buildLeadsExportFilename,
   formatLeadsCsv,
 } from '../utils/csv.js';
+import {
+  buildLeadsXlsxExportFilename,
+  formatLeadsXlsxBuffer,
+} from '../utils/xlsx.js';
+import type { Lead } from '../types/lead.types.js';
 
 function formatValidationErrors(
   issues: { path: PropertyKey[]; message: string }[],
@@ -111,10 +116,10 @@ export async function listLeadsHandler(
   }
 }
 
-export async function exportLeadsHandler(
+async function fetchLeadsForExport(
   req: Request,
   res: Response,
-): Promise<void> {
+): Promise<Lead[] | null> {
   const parsed = exportLeadsQuerySchema.safeParse(req.query);
 
   if (!parsed.success) {
@@ -125,11 +130,11 @@ export async function exportLeadsHandler(
         details: formatValidationErrors(parsed.error.issues),
       },
     });
-    return;
+    return null;
   }
 
   try {
-    const leads = await exportLeads({
+    return await exportLeads({
       search: parsed.data.search,
       searchBy: parsed.data.searchBy,
       sortBy: parsed.data.sortBy,
@@ -138,17 +143,61 @@ export async function exportLeadsHandler(
       createdFrom: parsed.data.createdFrom,
       createdTo: parsed.data.createdTo,
     });
+  } catch (error) {
+    console.error('Export leads failed:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to export leads',
+      },
+    });
+    return null;
+  }
+}
 
-    const csv = formatLeadsCsv(leads);
-    const filename = buildLeadsExportFilename();
+export async function exportLeadsHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const leads = await fetchLeadsForExport(req, res);
+
+  if (leads === null) {
+    return;
+  }
+
+  const csv = formatLeadsCsv(leads);
+  const filename = buildLeadsExportFilename();
+
+  res
+    .status(200)
+    .type('text/csv; charset=utf-8')
+    .set('Content-Disposition', `attachment; filename="${filename}"`)
+    .send(csv);
+}
+
+export async function exportLeadsXlsxHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const leads = await fetchLeadsForExport(req, res);
+
+  if (leads === null) {
+    return;
+  }
+
+  try {
+    const workbookBuffer = await formatLeadsXlsxBuffer(leads);
+    const filename = buildLeadsXlsxExportFilename();
 
     res
       .status(200)
-      .type('text/csv; charset=utf-8')
+      .type(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      )
       .set('Content-Disposition', `attachment; filename="${filename}"`)
-      .send(csv);
+      .send(workbookBuffer);
   } catch (error) {
-    console.error('Export leads failed:', error);
+    console.error('Export leads XLSX failed:', error);
     res.status(500).json({
       success: false,
       error: {
