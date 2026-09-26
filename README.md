@@ -2,46 +2,64 @@
 
 ## Overview
 
-Stylework Lead Tracker is a full-stack web application for capturing and managing sales leads. It provides a single-page interface to create leads, browse and search existing leads, sort the list, edit lead details, update status, and delete leads with confirmation. The backend exposes a JSON REST API backed by PostgreSQL.
+Stylework Lead Tracker is a full-stack web application for capturing and managing sales leads. Authenticated users can create, search, filter, sort, paginate, edit, delete, and update lead status from a single-page UI. The backend exposes a JSON REST API (plus CSV import/export) backed by PostgreSQL on Neon.
 
 ## Features
 
 - **Create lead** — name, email, optional phone, and status (defaults to `new`)
-- **List leads** — up to 100 results per request; default order is newest first (`created_at` descending)
+- **List leads** — server-side pagination with `page`, `limit`, `total`, and `totalPages`
 - **Search leads** — case-insensitive substring search
-- **Search by scope** — All (name, email, phone), or Name, Email, or Phone only
-- **Sort leads** — by name, email, or status; ascending or descending (or default created-date order)
-- **Update lead status** — inline status selector per row
+- **Search by scope** — `all`, `name`, `email`, or `phone`
+- **Server-side sorting** — by `name`, `email`, or `status` (workflow order for status); ascending or descending; default list order is newest first when sort is omitted
+- **Status filtering** — filter list by pipeline status
+- **Created date range filtering** — `createdFrom` / `createdTo` (ISO dates)
 - **Edit lead** — update name, email, phone, and status in a modal
-- **Delete lead** — hard delete with a confirmation dialog
-- **Health check** — `GET /api/health` for API availability
+- **Delete lead** — hard delete with confirmation
+- **Inline status update** — per-row status selector
+- **JWT authentication** — login, logout, and session verification
+- **HttpOnly authentication cookie** — JWT stored in cookie (not `localStorage`)
+- **CSV export** — download filtered/sorted leads (full result set; ignores `page`/`limit`)
+- **CSV import** — upload CSV, preview validation, confirm import
+- **CSV import preview** — row-level validation before any database write
+- **Duplicate detection on import** — within-file and against existing leads (case-insensitive email)
+- **Health check** — `GET /api/health` (public)
 
-There is no authentication, pagination UI, or multi-page routing in the current UI.
+There is no public signup; admin users are provisioned with `npm run db:create-admin`.
 
 ## Architecture
 
-The browser runs a React SPA that calls the Express API through a shared fetch-based client. TanStack Query manages server state (list, create, edit, delete, status updates, and sort parameters). The API validates input with Zod, runs business logic in services, and reads/writes PostgreSQL via `pg` parameterized queries. The database pool is created lazily on first query so the API can start (and report health) without `DATABASE_URL` until a route needs the database.
+The browser runs a React SPA behind an **AuthGate**: unauthenticated users see a login page; authenticated users see **Lead Tracker**. The shared API client uses `fetch` with `credentials: 'include'` so the HttpOnly JWT cookie is sent on API calls.
+
+TanStack Query manages server state (paginated list, filters, sort, CRUD, status updates, import/export). The Express API validates input with Zod, runs business logic in services, and uses parameterized SQL via `pg`. Lead routes require JWT authentication (`requireAuth`). List/export/import share the same filter and sort query model where applicable.
+
+Database schema changes are applied with versioned SQL migrations tracked in `schema_migrations` (`npm run db:migrate`).
 
 ```mermaid
 flowchart TB
   Browser["Browser"]
+  AuthGate["AuthGate + Login"]
   React["React + TypeScript (Vite)"]
   RQ["TanStack Query"]
-  Client["API client (fetch)"]
+  Client["API client (fetch, credentials)"]
   Express["Express 5 API"]
+  Auth["JWT + HttpOnly cookie"]
   Zod["Zod validation"]
-  Service["Lead service layer"]
+  Service["Lead / auth / import services"]
+  Migrations["Migration runner + schema_migrations"]
   PG["pg connection pool"]
-  DB["PostgreSQL"]
+  DB["PostgreSQL (Neon)"]
 
-  Browser --> React
+  Browser --> AuthGate
+  AuthGate --> React
   React --> RQ
   RQ --> Client
   Client --> Express
-  Express --> Zod
+  Express --> Auth
+  Auth --> Zod
   Zod --> Service
   Service --> PG
   PG --> DB
+  Migrations --> DB
 ```
 
 ## Tech Stack
@@ -49,11 +67,11 @@ flowchart TB
 | Layer | Technologies |
 |--------|----------------|
 | **Frontend** | React + TypeScript (React 19), Vite, plain CSS, TanStack Query, React Hook Form, Zod (`@hookform/resolvers`), ESLint |
-| **Backend** | Node.js + Express + TypeScript (Express 5, ESM), `pg`, Zod, `dotenv`, `cors` |
-| **Database** | PostgreSQL on [Neon](https://neon.tech) (connection via `DATABASE_URL`) |
-| **Deployment** | [Vercel](https://vercel.com) — static frontend build and Express API (`backend/vercel.json`) |
+| **Backend** | Node.js + Express + TypeScript (Express 5, ESM), `pg`, Zod, `jsonwebtoken`, `bcrypt`, `cookie-parser`, `cors`, `multer`, `csv-parse`, `exceljs`, `dotenv` |
+| **Database** | PostgreSQL on [Neon](https://neon.tech) (`DATABASE_URL`) |
+| **Deployment** | [Vercel](https://vercel.com) — static frontend and Express API (`backend/vercel.json`) |
 | **Testing** | Backend: Vitest, Supertest. Frontend: Vitest, React Testing Library, jsdom, `@testing-library/user-event` |
-| **Tooling** | `tsx` (backend dev/migrations), TypeScript compiler (`tsc`) for backend production build |
+| **Tooling** | `tsx` (dev/migrations/admin scripts), TypeScript (`tsc`) for backend production build |
 
 The repo root `package.json` is metadata only; install and run scripts live under `backend/` and `frontend/`.
 
@@ -62,51 +80,52 @@ The repo root `package.json` is metadata only; install and run scripts live unde
 ```
 stylework-lead-tracker/
 ├── README.md
-├── AGENT.md                  # AI-assisted development log (not required to run the app)
-├── package.json              # repo metadata only (no app scripts)
-├── .gitignore
+├── AGENT.md
+├── package.json
 ├── backend/
-│   ├── vercel.json           # Vercel Express deployment config
+│   ├── vercel.json
 │   ├── migrations/
-│   │   ├── 001_create_leads.up.sql
-│   │   └── 001_create_leads.down.sql
+│   │   ├── 001_create_leads.up.sql / .down.sql
+│   │   └── 002_create_users.up.sql / .down.sql
 │   ├── src/
-│   │   ├── index.ts          # App export; local listen when not on Vercel
-│   │   ├── app.ts            # Express app, CORS, JSON, routes
-│   │   ├── config/           # env, lazy database pool
-│   │   ├── constants/        # lead status + list sort options
-│   │   ├── controllers/      # HTTP handlers
-│   │   ├── routes/           # health + lead routes
+│   │   ├── app.ts, index.ts
+│   │   ├── config/           # env, database pool, auth cookie
+│   │   ├── constants/        # status, sort, pagination, import limits
+│   │   ├── controllers/      # HTTP handlers (leads, auth, import)
+│   │   ├── middleware/       # requireAuth, CSV upload
+│   │   ├── migrations/       # migration runner (schema_migrations)
+│   │   ├── routes/           # health, auth, leads
 │   │   ├── schemas/          # Zod request/query schemas
-│   │   ├── services/         # lead business logic + SQL
-│   │   ├── scripts/          # db-check.ts, db-migrate.ts
-│   │   ├── test/
-│   │   │   └── mock-query.ts # Vitest mock for database query()
-│   │   ├── types/
-│   │   └── leads.api.test.ts # API tests (Supertest, mocked DB)
-│   ├── .env.example
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vitest.config.ts
+│   │   ├── services/         # leads, auth, import
+│   │   ├── scripts/          # db-check, db-migrate, db-create-admin
+│   │   ├── test/             # mocks, auth test helpers
+│   │   └── types/
+│   └── package.json
 └── frontend/
-    ├── index.html
-    ├── eslint.config.js
     ├── src/
-    │   ├── App.tsx
-    │   ├── main.tsx
-    │   ├── lib/              # api-client, env, query-client, api-errors, format-date
-    │   ├── types/            # Lead, API response types
-    │   ├── test/             # setup.ts, fixtures, render helpers
-    │   └── features/leads/
-    │       ├── LeadTrackerPage.tsx
-    │       ├── LeadTrackerPage.test.tsx
-    │       ├── api/leads-api.ts
-    │       ├── components/, hooks/, schemas/
-    ├── .env.example
-    ├── package.json
-    ├── vite.config.ts
-    └── vitest.config.ts
+    │   ├── App.tsx           # AuthGate
+    │   ├── features/auth/    # login, session
+    │   ├── features/leads/   # LeadTrackerPage, import/export, API
+    │   └── lib/              # api-client (JSON + blob), env
+    └── package.json
 ```
+
+## Authentication
+
+Lead management requires a valid session.
+
+| Topic | Behavior |
+|--------|----------|
+| **Login** | `POST /api/auth/login` with email/password; on success sets HttpOnly `auth_token` cookie |
+| **JWT** | Signed with `JWT_SECRET`; lifetime from `JWT_EXPIRES_IN` (default `7d`); cookie `maxAge` matches JWT expiry |
+| **Cookie** | `httpOnly`, `secure` + `sameSite: none` in production; `sameSite: lax` in development |
+| **Protected routes** | All `/api/leads*` routes (including export/import) use `requireAuth` |
+| **Logout** | `POST /api/auth/logout` clears the auth cookie |
+| **Session check** | `GET /api/auth/me` returns the current user when the cookie is valid |
+| **Signup** | Not implemented — use `npm run db:create-admin` to create the initial admin |
+| **Client storage** | Do **not** store JWTs in `localStorage` or `sessionStorage`; the app relies on the cookie |
+
+**Required backend env (auth):** `JWT_SECRET`, `JWT_EXPIRES_IN` (optional, default `7d`). For `db:create-admin`: `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
 
 ## API Reference
 
@@ -119,462 +138,331 @@ Base path: `/api`
 
 ### Common response shapes
 
-**Success (single lead):**
+**Success (single lead):** `{ "success": true, "data": { ...lead } }`
+
+**Success (paginated list):**
 
 ```json
 {
   "success": true,
-  "data": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "Jane Doe",
-    "email": "jane@example.com",
-    "phone": "+1 555 0100",
-    "status": "new",
-    "createdAt": "2026-03-25T10:00:00.000Z",
-    "updatedAt": "2026-03-25T10:00:00.000Z"
+  "data": [ /* leads */ ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 42,
+    "totalPages": 3
   }
 }
 ```
 
-**Success (lead list):**
+**Validation error (400):** `{ "success": false, "error": { "message": "Validation failed", "details": [...] } }`
 
-```json
-{
-  "success": true,
-  "data": []
-}
-```
+**Unauthenticated (401):** `{ "success": false, "error": { "message": "Authentication required" } }`
 
-**Validation error (400):**
-
-```json
-{
-  "success": false,
-  "error": {
-    "message": "Validation failed",
-    "details": [
-      { "field": "email", "message": "Invalid email address" }
-    ]
-  }
-}
-```
-
-**Other errors (e.g. 404, 500):**
-
-```json
-{
-  "success": false,
-  "error": {
-    "message": "Lead not found"
-  }
-}
-```
-
-**Invalid JSON body (400):**
-
-```json
-{
-  "success": false,
-  "error": {
-    "message": "Invalid JSON body"
-  }
-}
-```
-
-Timestamps in API responses are ISO 8601 strings (`createdAt`, `updatedAt`).
+Timestamps in JSON are ISO 8601 (`createdAt`, `updatedAt`).
 
 ---
 
-### `POST /api/leads`
+### `POST /api/auth/login`
 
-Create a new lead.
+**Body:** `{ "email": "...", "password": "..." }`
 
-**Body (JSON):**
-
-| Field | Required | Notes |
-|--------|----------|--------|
-| `name` | Yes | Non-empty after trim |
-| `email` | Yes | Valid email |
-| `phone` | No | If provided, must not be empty after trim |
-| `status` | No | Defaults to `new`; must be a valid status |
-
-**Example request:**
-
-```http
-POST /api/leads
-Content-Type: application/json
-
-{
-  "name": "Jane Doe",
-  "email": "jane@example.com",
-  "phone": "+1 555 0100",
-  "status": "new"
-}
-```
-
-**Success:** `201` with `{ "success": true, "data": { ...lead } }`
-
-**Errors:** `400` validation, `500` with `{ "message": "Failed to create lead" }` on unexpected server/database failure (no stack traces in response)
+**Success:** `200` with user payload; sets HttpOnly auth cookie.
 
 ---
 
-### `GET /api/leads`
+### `POST /api/auth/logout`
 
-List leads. Returns at most **100** rows.
-
-**Default order:** `created_at` descending when `sortBy` is omitted.
-
-**Query parameters:**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `search` | No | Trimmed search string; omitted or empty returns full list (within limit) |
-| `searchBy` | No | One of `all`, `name`, `email`, `phone`. Defaults to `all` when `search` is set and `searchBy` is omitted. Ignored when `search` is omitted or empty |
-| `sortBy` | No | One of `name`, `email`, `status`. Omit for default `created_at` order |
-| `sortOrder` | No | `asc` or `desc`. Defaults to `desc` when `sortBy` is set and `sortOrder` is omitted; ignored when `sortBy` is omitted |
-
-When sorting by `status`, order follows pipeline workflow (`new` → `contacted` → `qualified` → `converted` → `lost`), not alphabetical status strings. Name and email sorts use `created_at` descending as a tiebreaker.
-
-**Examples:**
-
-```http
-GET /api/leads
-GET /api/leads?search=jane
-GET /api/leads?search=jane&searchBy=all
-GET /api/leads?search=jane&searchBy=name
-GET /api/leads?search=jane@example.com&searchBy=email
-GET /api/leads?search=555&searchBy=phone
-GET /api/leads?sortBy=name&sortOrder=asc
-GET /api/leads?sortBy=status&sortOrder=desc
-GET /api/leads?search=jane&searchBy=name&sortBy=email&sortOrder=asc
-```
-
-Search uses case-insensitive `ILIKE` on the selected field(s). `phone` matches use `COALESCE(phone, '')`.
-
-**Success:** `200` with `{ "success": true, "data": [ ...leads ] }` (empty array if no matches)
-
-**Errors:** `400` invalid `searchBy`, `sortBy`, or `sortOrder` (validation `details` included), `500` with `{ "message": "Failed to list leads" }` on server failure
+**Success:** `200`; clears auth cookie.
 
 ---
 
-### `PUT /api/leads/:id`
+### `GET /api/auth/me`
 
-Update an existing lead (name, email, optional phone, optional status). `updated_at` is maintained by a database trigger.
+Requires authentication.
 
-**Path parameter:** `id` — UUID
-
-**Body (JSON):** same field rules as create (`name` and `email` required; `phone` optional; `status` optional).
-
-**Example:**
-
-```http
-PUT /api/leads/550e8400-e29b-41d4-a716-446655440000
-Content-Type: application/json
-
-{
-  "name": "Jane Doe",
-  "email": "jane@example.com",
-  "phone": "+1 555 0100",
-  "status": "qualified"
-}
-```
-
-**Success:** `200` with `{ "success": true, "data": { ...updated lead } }`
-
-**Errors:** `400` invalid UUID or validation, `404` lead not found, `500` with `{ "message": "Failed to update lead" }` on server failure
-
----
-
-### `DELETE /api/leads/:id`
-
-Permanently delete a lead (hard delete).
-
-**Path parameter:** `id` — UUID
-
-**Example:**
-
-```http
-DELETE /api/leads/550e8400-e29b-41d4-a716-446655440000
-```
-
-**Success:** `200`
-
-```json
-{
-  "success": true,
-  "message": "Lead deleted successfully"
-}
-```
-
-**Errors:** `400` invalid UUID, `404` lead not found, `500` with `{ "message": "Failed to delete lead" }` on server failure
-
----
-
-### `PATCH /api/leads/:id/status`
-
-Update only the `status` of an existing lead. `updated_at` is maintained by a database trigger.
-
-**Path parameter:** `id` — UUID
-
-**Body (JSON):**
-
-```json
-{
-  "status": "contacted"
-}
-```
-
-**Example:**
-
-```http
-PATCH /api/leads/550e8400-e29b-41d4-a716-446655440000/status
-Content-Type: application/json
-
-{ "status": "contacted" }
-```
-
-**Success:** `200` with `{ "success": true, "data": { ...updated lead } }`
-
-**Errors:** `400` invalid UUID or invalid status (validation `details` included), `404` lead not found, `500` with `{ "message": "Failed to update lead status" }` on server failure
+**Success:** `200` with current user. **Errors:** `401` if not authenticated.
 
 ---
 
 ### `GET /api/health`
 
-**Success:** `200`
+Public. **Success:** `200` — `{ "success": true, "message": "API is healthy" }` (no database required).
+
+---
+
+### `GET /api/leads`
+
+Requires authentication. Paginated list with search, filters, and sort.
+
+| Parameter | Notes |
+|-----------|--------|
+| `page` | Positive integer; default `1` |
+| `limit` | Positive integer; default `20`; max `100` |
+| `search` | Trimmed search string |
+| `searchBy` | `all`, `name`, `email`, `phone` |
+| `status` | `new`, `contacted`, `qualified`, `converted`, `lost` |
+| `createdFrom` | `YYYY-MM-DD` |
+| `createdTo` | `YYYY-MM-DD` |
+| `sortBy` | `name`, `email`, `status` (omit for default `created_at` desc) |
+| `sortOrder` | `asc`, `desc` |
+
+Status sort uses workflow order (`new` → … → `lost`). **Success:** `200` with `data` and `pagination`.
+
+---
+
+### `POST /api/leads`
+
+Requires authentication.
+
+**Body:** `{ "name", "email", "phone"?, "status"? }` — `status` defaults to `new`; optional `phone` may be omitted or empty (stored as `null`).
+
+**Success:** `201` with created lead. **Errors:** `400` validation.
+
+---
+
+### `PUT /api/leads/:id`
+
+Requires authentication. **Path:** UUID `id`.
+
+**Body:** `{ "name", "email", "phone"?, "status"? }` — full field update per `updateLeadSchema`.
+
+**Success:** `200` with updated lead. **Errors:** `400` validation; `404` if lead not found.
+
+---
+
+### `PATCH /api/leads/:id/status`
+
+Requires authentication. **Path:** UUID `id`.
+
+**Body:** `{ "status": "new" | "contacted" | "qualified" | "converted" | "lost" }`
+
+**Success:** `200` with updated lead. **Errors:** `400` validation; `404` if lead not found.
+
+---
+
+### `DELETE /api/leads/:id`
+
+Requires authentication. **Path:** UUID `id`. Hard delete.
+
+**Success:** `200` with confirmation message. **Errors:** `404` if lead not found.
+
+---
+
+### `GET /api/leads/export.csv`
+
+Requires authentication. Accepts the same filter/sort query parameters as `GET /api/leads` **except** `page` and `limit`. Returns all matching rows as `text/csv` with `Content-Disposition` attachment filename `leads-YYYY-MM-DD.csv`.
+
+---
+
+### `POST /api/leads/import/preview`
+
+Requires authentication. `multipart/form-data` field `file` (`.csv`, size limit enforced). Parses and validates rows (`name`, `email`, `phone`, `status` columns). **Does not write to the database.**
+
+**Success:** `200` with preview payload, for example:
 
 ```json
 {
   "success": true,
-  "message": "API is healthy"
+  "data": {
+    "totalRows": 10,
+    "validRows": 8,
+    "invalidRows": 1,
+    "duplicateRows": 1,
+    "errors": [
+      {
+        "row": 5,
+        "field": "email",
+        "type": "duplicate",
+        "message": "Email already exists"
+      }
+    ],
+    "validLeads": [ /* rows safe to import */ ]
+  }
 }
 ```
 
-Does not require database access.
+Duplicate emails are detected within the file and against existing leads (trim + case-insensitive). Duplicate rows are **not** included in `validLeads`.
+
+---
+
+### `POST /api/leads/import/confirm`
+
+Requires authentication. **Body:** `{ "leads": [ /* CreateLeadInput[] */ ] }` — must match server validation (`createLeadSchema`). Re-validates and re-checks duplicates inside a transaction; only non-duplicate rows are inserted. **Success:** `201` with `importedCount` and created leads.
+
+---
 
 ## Lead Statuses
 
-Defined in `backend/src/constants/lead-status.ts` and enforced in PostgreSQL:
+`new`, `contacted`, `qualified`, `converted`, `lost` — enforced in PostgreSQL and Zod.
 
-| Status | Description (pipeline) |
-|--------|-------------------------|
-| `new` | Default for new leads |
-| `contacted` | Initial outreach made |
-| `qualified` | Meets qualification criteria |
-| `converted` | Won / converted |
-| `lost` | Not proceeding |
+## Database
+
+| Object | Purpose |
+|--------|---------|
+| **`leads`** | Lead records (UUID, name, email, phone, status, timestamps, indexes) |
+| **`users`** | Admin users (`email` unique, `password_hash`) |
+| **`schema_migrations`** | Applied migration versions (`version`, `name`, `applied_at`) |
+
+**Scripts (from `backend/` with `DATABASE_URL` set):**
+
+| Command | Purpose |
+|---------|---------|
+| `npm run db:check` | Connectivity check |
+| `npm run db:migrate` | Apply pending `.up.sql` migrations (idempotent; skips applied) |
+| `npm run db:migrate:down` | Roll back **latest** applied migration only |
+| `npm run db:create-admin` | Create admin user (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) |
+
+On first run against an existing database that already has `leads` / `users` but no history, the runner **bootstraps** `schema_migrations` by detecting those tables (then uses history as source of truth).
 
 ## Local Development
 
 ### Prerequisites
 
-- **Node.js** (LTS recommended; project uses modern ESM and TypeScript)
-- **npm**
-- **PostgreSQL** database (e.g. [Neon](https://neon.tech) for a hosted dev instance)
+Node.js (LTS), npm, PostgreSQL (e.g. Neon).
 
-### 1. Clone and install
+### Install
 
 ```bash
 git clone https://github.com/Aman-Sigroha/stylework-lead-tracker.git
 cd stylework-lead-tracker
-
-cd backend
-npm install
-
-cd ../frontend
-npm install
+cd backend && npm install
+cd ../frontend && npm install
 ```
 
-### 2. Environment variables
+### Environment
 
-Do **not** commit real `.env` files (they are gitignored). Copy examples:
-
-**Backend** (`backend/.env` from `backend/.env.example`):
+**Backend** (`backend/.env` from `.env.example`):
 
 ```env
 PORT=3000
 NODE_ENV=development
-DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
-# Optional:
+DATABASE_URL=postgresql://...
+JWT_SECRET=your-secret
+JWT_EXPIRES_IN=7d
 # CORS_ORIGIN=http://localhost:5173
 ```
 
-**Frontend** (`frontend/.env` from `frontend/.env.example`):
+**Frontend** (`frontend/.env`):
 
 ```env
 VITE_API_BASE_URL=http://localhost:3000/api
 ```
 
-If `VITE_API_BASE_URL` is unset, the frontend defaults to `http://localhost:3000/api` (`frontend/src/lib/env.ts`).
-
-### 3. Database setup
-
-From `backend/` with `DATABASE_URL` set in `.env`:
+### Database and admin
 
 ```bash
-npm run db:check      # optional connectivity check
-npm run db:migrate    # applies *.up.sql in backend/migrations/ (sorted)
+cd backend
+npm run db:migrate
+npm run db:create-admin
 ```
 
-Rollback using down migrations:
+### Run
 
 ```bash
-npm run db:migrate:down   # applies *.down.sql in backend/migrations/ (sorted)
-```
+# backend/
+npm run dev
 
-### 4. Run the backend
-
-From `backend/`:
-
-```bash
-npm run dev     # development (tsx watch)
-# or
-npm run build
-npm start       # production: node dist/index.js
-```
-
-Default API: `http://localhost:3000` (or `PORT` from `.env`).
-
-### 5. Run the frontend
-
-From `frontend/`:
-
-```bash
+# frontend/
 npm run dev
 ```
 
-Default dev server: `http://localhost:5173` (Vite).
-
-Ensure `CORS_ORIGIN` includes the frontend origin if you set it on the backend.
+Frontend: `http://localhost:5173` · API: `http://localhost:3000/api`
 
 ## Environment Variables
 
 | Variable | Where | Purpose |
 |----------|--------|---------|
-| `PORT` | Backend | HTTP port (default `3000` in code if unset) |
-| `NODE_ENV` | Backend | Environment name (e.g. `development`) |
-| `DATABASE_URL` | Backend | PostgreSQL connection string (**required** for lead routes; pool is created on first database query) |
-| `VERCEL` | Backend (Vercel) | Set by Vercel (`1`); skips binding a local HTTP port in `index.ts` |
-| `CORS_ORIGIN` | Backend | Optional comma-separated allowed origins; omit for permissive CORS in dev |
-| `VITE_API_BASE_URL` | Frontend | Base URL for API calls (includes `/api`) |
+| `DATABASE_URL` | Backend | PostgreSQL (**required** for lead/auth data) |
+| `JWT_SECRET` | Backend | JWT signing (**required** for auth) |
+| `JWT_EXPIRES_IN` | Backend | Token/cookie lifetime (default `7d`) |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Backend | `db:create-admin` only |
+| `CORS_ORIGIN` | Backend | Allowed origins for credentialed CORS (required in production) |
+| `PORT` | Backend | Local dev server port (default `3000`) |
+| `NODE_ENV` | Backend | Local development only |
+| `VERCEL` | Backend | Set by Vercel at runtime |
+| `VITE_API_BASE_URL` | Frontend | API base URL at build time |
 
-Never commit secrets. Use `.env.example` as a template only.
+Never commit secrets.
 
 ## Testing
 
-Run tests from `backend/` or `frontend/`. The root `package.json` has no Vitest scripts.
+Run from `backend/` or `frontend/`.
 
-### Backend (`backend/`)
-
-```bash
-npm test              # vitest run (once)
-npm run test:watch
-npm run test:coverage
-```
-
-Covers Express routes and validation via **Vitest** and **Supertest** (`src/leads.api.test.ts`, `src/config/database.test.ts` — **45** tests total), with **`query`** mocked via `src/test/mock-query.ts` (no live PostgreSQL required). Includes create, list/search/`searchBy`, sorting, full lead update, delete, status update, validation, and error cases.
-
-### Frontend (`frontend/`)
+### Backend
 
 ```bash
 npm test
-npm run test:watch
-npm run test:coverage
+npm run build
 ```
 
-Covers **LeadTrackerPage** behavior with **Vitest** and **React Testing Library** (`LeadTrackerPage.test.tsx`, **45** tests; `src/test/setup.ts` for jsdom): list/loading/empty/error states, debounced search and `searchBy`, sort controls, create- and edit-lead modal flows, delete confirmation, and status updates. **`leads-api` functions are mocked** (no real backend).
+**150** tests (Vitest + Supertest). HTTP and migration-runner tests use mocked `pg` / filesystem boundaries; no live Neon required for CI-style runs.
 
-## Build
-
-**Backend** (`backend/`):
+### Frontend
 
 ```bash
-npm run build   # tsc → dist/
-npm start       # run compiled output
-```
-
-**Frontend** (`frontend/`):
-
-```bash
-npm run build   # tsc -b && vite build → frontend/dist/
-npm run preview # optional local preview of production build
-```
-
-**Lint (frontend only):**
-
-```bash
-cd frontend
+npm test
+npm run build
 npm run lint
 ```
 
+**93** tests (Vitest + React Testing Library). `leads-api` and auth APIs are mocked.
+
+## Build
+
+**Backend:** `npm run build` → `dist/` · **Frontend:** `npm run build` → `dist/`
+
 ## Deployment
 
-**Live Demo:** [https://stylework-lead-tracker.vercel.app](https://stylework-lead-tracker.vercel.app)
+**Live demo:** [https://stylework-lead-tracker.vercel.app](https://stylework-lead-tracker.vercel.app)
 
-### Production architecture
+| Component | URL |
+|-----------|-----|
+| Frontend | https://stylework-lead-tracker.vercel.app |
+| Backend API | https://stylework-lead-tracker-backend.vercel.app/api |
+| Database | Neon (`DATABASE_URL` on backend project only) |
 
-| Component | Hosting | URL / notes |
-|-----------|---------|-------------|
-| **Frontend** | Vercel (Vite static build) | [https://stylework-lead-tracker.vercel.app](https://stylework-lead-tracker.vercel.app) |
-| **Backend API** | Vercel (Express via `backend/vercel.json`) | [https://stylework-lead-tracker-backend.vercel.app/api](https://stylework-lead-tracker-backend.vercel.app/api) |
-| **Database** | Neon PostgreSQL | `DATABASE_URL` on the backend project only |
+### Vercel checklist
 
-The SPA calls the public API using `VITE_API_BASE_URL` baked in at **frontend build time**. The backend allows the frontend origin via `CORS_ORIGIN` and connects to Neon using `DATABASE_URL`.
+1. **Database** — run `npm run db:migrate` against production Neon when schema changes (safe to re-run; pending only).
+2. **Backend project** (`backend/`) — set `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN` (frontend origin). Do **not** set `PORT` or `NODE_ENV` for Vercel; runtime is managed by the platform.
+3. **Frontend project** (`frontend/`) — set `VITE_API_BASE_URL=https://stylework-lead-tracker-backend.vercel.app/api` before build.
+4. Create admin with `db:create-admin` against production (locally with production `DATABASE_URL`, not committed).
 
-### Release checklist
-
-1. **Database** — run `npm run db:migrate` from `backend/` against the production Neon database (once per schema change).
-2. **Backend (Vercel)** — project root directory `backend/`; set **`DATABASE_URL`** (Neon PostgreSQL) and **`CORS_ORIGIN`** to the frontend origin (e.g. `https://stylework-lead-tracker.vercel.app`). Vercel sets runtime environment variables such as `VERCEL`; you do not need to configure `PORT` for this deployment. `backend/vercel.json` uses the Express framework preset.
-3. **Frontend (Vercel)** — project root directory `frontend/`; set `VITE_API_BASE_URL=https://stylework-lead-tracker-backend.vercel.app/api` for production builds, then deploy so the bundle points at the live API.
-
-Health check (no database required): `GET https://stylework-lead-tracker-backend.vercel.app/api/health`
+Health: `GET https://stylework-lead-tracker-backend.vercel.app/api/health`
 
 ## Engineering Trade-offs
 
-- **PostgreSQL + `pg`** — Relational model fits structured leads, constraints on `status`, and indexed search; parameterized queries avoid SQL injection.
-- **Layered backend (routes → controllers → services)** — Clear separation without a heavy repository abstraction for this scope.
-- **Zod at the API boundary** — Shared validation rules for body and query params; consistent 400 responses.
-- **Safe API errors** — Clients receive generic messages; details are logged server-side for 500s.
-- **List cap (100 rows)** — Prevents unbounded reads; pagination UI is deferred.
-- **Server-side search and sort** — `ILIKE` and `ORDER BY` in PostgreSQL rather than loading and sorting the full list in the browser.
-- **Hard delete** — Deletes remove rows permanently; no soft-delete or undo.
-- **TanStack Query** — Caching, refetch, and mutations for list/create/edit/delete/status/sort without manual loading state everywhere.
-- **Plain CSS** — No UI framework dependency; feature-scoped styles for the assignment scope.
-- **Feature folder (`features/leads`)** — Colocates UI, hooks, and API module for the main domain.
-- **Test mocking** — Backend mocks `query`; frontend mocks `leads-api`; fast, deterministic CI-friendly tests without Neon credentials in test runs.
+- **PostgreSQL + parameterized SQL** — Constraints, indexes, and safe dynamic filters/sort via whitelists
+- **Layered API** — routes → controllers → services
+- **Zod at the boundary** — Consistent validation for JSON and query params
+- **Server-side pagination, filtering, and sorting** — Scales beyond a single browser-side list
+- **JWT in HttpOnly cookie** — Avoids XSS token theft from `localStorage`; requires correct CORS/credentials
+- **Hard delete** — No soft-delete or undo
+- **CSV import two-step flow** — Preview + confirm; server always re-validates
+- **Duplicate import handling** — Email normalized (trim, lowercase); no DB unique on `leads.email` (duplicates allowed for manual creates; import blocks duplicates intentionally)
+- **Migration history** — `schema_migrations` with per-migration transactions and legacy bootstrap for existing Neon schemas
+- **Test boundaries** — Mock `query` / API modules for fast, credential-free tests
 
-## Future Improvements
+## Limitations / Future Work
 
-- Pagination for large lead lists (beyond the 100-row API cap)
-- Authentication and role-based access
-- Additional filters (e.g. by status, date range)
-- Audit log / history of status changes
-- CI pipeline (lint, test, build on push)
-- Rate limiting and production observability (structured logging, metrics)
-- Remove or use `react-router-dom` if multi-page navigation is added
-
-These are **not** implemented today.
+- No self-service signup or role-based permissions beyond a single admin model
+- No audit log of field/status changes
+- No rate limiting or production observability stack in-repo
+- `leads.email` is indexed but not globally unique (import duplicate rules are separate from manual entry)
+- Optional CI workflow not included in this repository
 
 ## Design / UX Notes
 
-- Single-page **Lead Tracker** layout: header, search and sort controls, create-lead action, and leads table.
-- **Create lead** and **Edit lead** use accessible `<dialog>` modals with shared form fields and client-side validation.
-- **Delete lead** uses a confirmation dialog before calling the API.
-- **Search** uses a 300ms debounce; **search by** selector defaults to All.
-- **Sort** — Default (newest first), or Name / Email / Status with Ascending / Descending (direction disabled for Default).
-- Table shows name, email, phone, status (editable `<select>`), formatted created date, and row actions (edit, delete); horizontal scroll / stacked rows on smaller viewports.
-- Loading, empty, no-results, and error states include a **Retry** action for list fetch failures.
+- Login gate, then single-page Lead Tracker: search, filters, sort, pagination, import/export, table with inline status, modals for create/edit, delete confirmation
+- Search debounced (~300ms); export uses current filter/sort state; import shows preview counts (ready / duplicates / invalid)
 
 ## Assumptions
 
-- **Phone** is optional; empty or omitted phone is stored as `null`.
-- **Default status** on create is `new` when not specified.
-- **Search:** empty or whitespace-only `search` returns the normal list (subject to the 100-row cap); `searchBy` only affects the query when `search` is non-empty.
-- **Inline status** updates change only `status`; full field edits use the edit modal (`PUT /api/leads/:id`).
-- **No auth** — API is open in the current deployment; treat production data accordingly until authentication is added.
+- Phone optional; empty phone stored as `null`
+- Default status on create: `new`
+- Export returns all rows matching filters, not only the current page
 
 ## AI-Assisted Development
 
-AI-assisted tools were permitted for this assignment. For a detailed account of
-AI usage, prompts, AI-generated sections, manually written sections, and
-engineering decisions, see **AGENT.md**.
+See **AGENT.md** for tool usage, workflow, and verification history.
