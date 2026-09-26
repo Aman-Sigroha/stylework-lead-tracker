@@ -1,19 +1,26 @@
 import { formatLeadDate } from '../../../lib/format-date.js';
-import type { Lead } from '../../../types/lead.js';
+import type { Lead, LeadStatus } from '../../../types/lead.js';
+import { LeadStatusSelect } from './LeadStatusSelect.tsx';
 
 type LeadListProps = {
   leads: Lead[];
+  pendingStatusLeadId: string | null;
+  onStatusChange: (
+    leadId: string,
+    status: LeadStatus,
+    currentStatus: LeadStatus,
+  ) => void;
 };
-
-function formatStatus(status: Lead['status']): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
 
 function formatPhone(phone: string | null): string {
   return phone ?? '—';
 }
 
-export function LeadList({ leads }: LeadListProps) {
+export function LeadList({
+  leads,
+  pendingStatusLeadId,
+  onStatusChange,
+}: LeadListProps) {
   return (
     <div className="lead-table-wrap">
       <table className="lead-table">
@@ -33,9 +40,11 @@ export function LeadList({ leads }: LeadListProps) {
               <td data-label="Email">{lead.email}</td>
               <td data-label="Phone">{formatPhone(lead.phone)}</td>
               <td data-label="Status">
-                <span className={`lead-status lead-status--${lead.status}`}>
-                  {formatStatus(lead.status)}
-                </span>
+                <LeadStatusSelect
+                  lead={lead}
+                  isUpdating={pendingStatusLeadId === lead.id}
+                  onStatusChange={onStatusChange}
+                />
               </td>
               <td data-label="Created at">{formatLeadDate(lead.createdAt)}</td>
             </tr>

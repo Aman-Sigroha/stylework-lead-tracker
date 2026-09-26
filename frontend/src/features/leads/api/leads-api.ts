@@ -70,3 +70,32 @@ export async function createLead(payload: CreateLeadPayload): Promise<Lead> {
 
   return (body as ApiSuccessResponse<Lead>).data;
 }
+
+export type UpdateLeadStatusPayload = {
+  id: string;
+  status: LeadStatus;
+};
+
+export async function updateLeadStatus(
+  payload: UpdateLeadStatusPayload,
+): Promise<Lead> {
+  const response = await apiRequest(`/leads/${payload.id}/status`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status: payload.status }),
+  });
+
+  const body: unknown = await response.json();
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      getApiErrorMessage(body, 'Failed to update lead status'),
+      response.status,
+      body,
+    );
+  }
+
+  return (body as ApiSuccessResponse<Lead>).data;
+}
