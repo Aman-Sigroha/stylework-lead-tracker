@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CreateLeadModal } from './components/CreateLeadModal.tsx';
+import { EditLeadModal } from './components/EditLeadModal.tsx';
 import { CreateLeadSection } from './components/CreateLeadSection.tsx';
 import { LeadList } from './components/LeadList.tsx';
 import { LeadListState } from './components/LeadListState.tsx';
@@ -11,13 +12,14 @@ import { useLeadsQuery } from './hooks/useLeadsQuery.ts';
 import { useUpdateLeadStatusMutation } from './hooks/useUpdateLeadStatusMutation.ts';
 import { ApiRequestError } from '../../lib/api-errors.js';
 import { getStatusUpdateErrorMessage } from './lib/status-update-errors.ts';
-import type { LeadSearchBy, LeadStatus } from '../../types/lead.js';
+import type { Lead, LeadSearchBy, LeadStatus } from '../../types/lead.js';
 import './LeadTrackerPage.css';
 
 export function LeadTrackerPage() {
   const [search, setSearch] = useState('');
   const [searchBy, setSearchBy] = useState<LeadSearchBy>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -47,6 +49,11 @@ export function LeadTrackerPage() {
   const handleLeadCreated = () => {
     setIsCreateOpen(false);
     setSuccessMessage('Lead created successfully.');
+  };
+
+  const handleLeadUpdated = () => {
+    setEditingLead(null);
+    setSuccessMessage('Lead updated successfully.');
   };
 
   const pendingStatusLeadId =
@@ -136,6 +143,7 @@ export function LeadTrackerPage() {
             <LeadList
               leads={leads}
               pendingStatusLeadId={pendingStatusLeadId}
+              onEditLead={setEditingLead}
               onStatusChange={handleStatusChange}
             />
           )}
@@ -146,6 +154,12 @@ export function LeadTrackerPage() {
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         onCreated={handleLeadCreated}
+      />
+
+      <EditLeadModal
+        lead={editingLead}
+        onClose={() => setEditingLead(null)}
+        onUpdated={handleLeadUpdated}
       />
     </div>
   );

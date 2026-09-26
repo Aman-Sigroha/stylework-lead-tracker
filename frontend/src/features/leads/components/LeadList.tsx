@@ -5,6 +5,7 @@ import { LeadStatusSelect } from './LeadStatusSelect.tsx';
 type LeadListProps = {
   leads: Lead[];
   pendingStatusLeadId: string | null;
+  onEditLead: (lead: Lead) => void;
   onStatusChange: (
     leadId: string,
     status: LeadStatus,
@@ -19,6 +20,7 @@ function formatPhone(phone: string | null): string {
 export function LeadList({
   leads,
   pendingStatusLeadId,
+  onEditLead,
   onStatusChange,
 }: LeadListProps) {
   return (
@@ -31,6 +33,7 @@ export function LeadList({
             <th scope="col">Phone</th>
             <th scope="col">Status</th>
             <th scope="col">Created at</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -47,6 +50,16 @@ export function LeadList({
                 />
               </td>
               <td data-label="Created at">{formatLeadDate(lead.createdAt)}</td>
+              <td data-label="Actions">
+                <button
+                  type="button"
+                  className="lead-table__edit-button"
+                  onClick={() => onEditLead(lead)}
+                  aria-label={`Edit ${lead.name}`}
+                >
+                  Edit
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

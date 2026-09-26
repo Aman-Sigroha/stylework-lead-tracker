@@ -4,31 +4,36 @@ import { useForm } from 'react-hook-form';
 import { ApiRequestError, getApiValidationDetails } from '../../../lib/api-errors.js';
 import { LEAD_STATUSES } from '../../../types/lead.js';
 import {
-  createLeadFormDefaultValues,
-  createLeadFormSchema,
-  type CreateLeadFormValues,
+  leadFormDefaultValues,
+  leadFormSchema,
+  type LeadFormValues,
 } from '../schemas/create-lead-form.schema.js';
-import type { useCreateLeadMutation } from '../hooks/useCreateLeadMutation.js';
 
-type CreateLeadFormProps = {
+type LeadFormProps = {
   formId: string;
   isOpen: boolean;
+  mode: 'create' | 'edit';
+  initialValues?: LeadFormValues;
+  isSubmitting: boolean;
   onCancel: () => void;
   onSuccess: () => void;
-  mutation: ReturnType<typeof useCreateLeadMutation>;
+  onSubmitValues: (values: LeadFormValues) => Promise<void>;
 };
 
-function formatStatusLabel(status: CreateLeadFormValues['status']): string {
+function formatStatusLabel(status: LeadFormValues['status']): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-export function CreateLeadForm({
+export function LeadForm({
   formId,
   isOpen,
+  mode,
+  initialValues = leadFormDefaultValues,
+  isSubmitting,
   onCancel,
   onSuccess,
-  mutation: createLeadMutation,
-}: CreateLeadFormProps) {
+  onSubmitValues,
+}: LeadFormProps) {
   const {
     register,
     handleSubmit,
@@ -36,30 +41,22 @@ export function CreateLeadForm({
     setError,
     clearErrors,
     formState: { errors },
-  } = useForm<CreateLeadFormValues>({
-    resolver: zodResolver(createLeadFormSchema),
-    defaultValues: createLeadFormDefaultValues,
+  } = useForm<LeadFormValues>({
+    resolver: zodResolver(leadFormSchema),
+    defaultValues: leadFormDefaultValues,
   });
-
-  const isSubmitting = createLeadMutation.isPending;
 
   useEffect(() => {
     if (isOpen) {
-      reset(createLeadFormDefaultValues);
+      reset(initialValues);
       clearErrors();
     }
-  }, [isOpen, reset, clearErrors]);
+  }, [isOpen, initialValues, reset, clearErrors]);
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      await createLeadMutation.mutateAsync({
-        name: values.name,
-        email: values.email,
-        status: values.status,
-        ...(values.phone.trim() !== '' ? { phone: values.phone.trim() } : {}),
-      });
-
-      reset(createLeadFormDefaultValues);
+      await onSubmitValues(values);
+      reset(leadFormDefaultValues);
       onSuccess();
     } catch (error) {
       if (error instanceof ApiRequestError) {
@@ -85,16 +82,28 @@ export function CreateLeadForm({
           message:
             error.status === 400
               ? error.message
-              : 'Unable to create lead. Please try again.',
+              : mode === 'create'
+                ? 'Unable to create lead. Please try again.'
+                : 'Unable to update lead. Please try again.',
         });
         return;
       }
 
       setError('root', {
-        message: 'Unable to create lead. Please check your connection and try again.',
+        message:
+          mode === 'create'
+            ? 'Unable to create lead. Please check your connection and try again.'
+            : 'Unable to update lead. Please check your connection and try again.',
       });
     }
   });
+
+  const submitLabel = mode === 'create' ? 'Create lead' : 'Save Changes';
+  const submittingLabel = mode === 'create' ? 'Creating...' : 'Saving...';
+  const nameFieldId = `${formId}-name`;
+  const emailFieldId = `${formId}-email`;
+  const phoneFieldId = `${formId}-phone`;
+  const statusFieldId = `${formId}-status`;
 
   return (
     <form id={formId} className="create-lead-form" onSubmit={onSubmit} noValidate>
@@ -105,77 +114,77 @@ export function CreateLeadForm({
       ) : null}
 
       <div className="create-lead-form__field">
-        <label className="create-lead-form__label" htmlFor="create-lead-name">
+        <label className="create-lead-form__label" htmlFor={nameFieldId}>
           Name
         </label>
         <input
-          id="create-lead-name"
+          id={nameFieldId}
           className="create-lead-form__input"
           type="text"
           autoComplete="name"
           aria-invalid={errors.name ? true : undefined}
-          aria-describedby={errors.name ? 'create-lead-name-error' : undefined}
+          aria-describedby={errors.name ? `${nameFieldId}-error` : undefined}
           disabled={isSubmitting}
           {...register('name')}
         />
         {errors.name ? (
-          <p id="create-lead-name-error" className="create-lead-form__error">
+          <p id={`${nameFieldId}-error`} className="create-lead-form__error">
             {errors.name.message}
           </p>
         ) : null}
       </div>
 
       <div className="create-lead-form__field">
-        <label className="create-lead-form__label" htmlFor="create-lead-email">
+        <label className="create-lead-form__label" htmlFor={emailFieldId}>
           Email
         </label>
         <input
-          id="create-lead-email"
+          id={emailFieldId}
           className="create-lead-form__input"
           type="email"
           autoComplete="email"
           aria-invalid={errors.email ? true : undefined}
-          aria-describedby={errors.email ? 'create-lead-email-error' : undefined}
+          aria-describedby={errors.email ? `${emailFieldId}-error` : undefined}
           disabled={isSubmitting}
           {...register('email')}
         />
         {errors.email ? (
-          <p id="create-lead-email-error" className="create-lead-form__error">
+          <p id={`${emailFieldId}-error`} className="create-lead-form__error">
             {errors.email.message}
           </p>
         ) : null}
       </div>
 
       <div className="create-lead-form__field">
-        <label className="create-lead-form__label" htmlFor="create-lead-phone">
+        <label className="create-lead-form__label" htmlFor={phoneFieldId}>
           Phone <span className="create-lead-form__optional">(optional)</span>
         </label>
         <input
-          id="create-lead-phone"
+          id={phoneFieldId}
           className="create-lead-form__input"
           type="tel"
           autoComplete="tel"
           aria-invalid={errors.phone ? true : undefined}
-          aria-describedby={errors.phone ? 'create-lead-phone-error' : undefined}
+          aria-describedby={errors.phone ? `${phoneFieldId}-error` : undefined}
           disabled={isSubmitting}
           {...register('phone')}
         />
         {errors.phone ? (
-          <p id="create-lead-phone-error" className="create-lead-form__error">
+          <p id={`${phoneFieldId}-error`} className="create-lead-form__error">
             {errors.phone.message}
           </p>
         ) : null}
       </div>
 
       <div className="create-lead-form__field">
-        <label className="create-lead-form__label" htmlFor="create-lead-status">
+        <label className="create-lead-form__label" htmlFor={statusFieldId}>
           Status
         </label>
         <select
-          id="create-lead-status"
+          id={statusFieldId}
           className="create-lead-form__select"
           aria-invalid={errors.status ? true : undefined}
-          aria-describedby={errors.status ? 'create-lead-status-error' : undefined}
+          aria-describedby={errors.status ? `${statusFieldId}-error` : undefined}
           disabled={isSubmitting}
           {...register('status')}
         >
@@ -186,7 +195,7 @@ export function CreateLeadForm({
           ))}
         </select>
         {errors.status ? (
-          <p id="create-lead-status-error" className="create-lead-form__error">
+          <p id={`${statusFieldId}-error`} className="create-lead-form__error">
             {errors.status.message}
           </p>
         ) : null}
@@ -207,7 +216,7 @@ export function CreateLeadForm({
           disabled={isSubmitting}
           aria-busy={isSubmitting}
         >
-          {isSubmitting ? 'Creating...' : 'Create lead'}
+          {isSubmitting ? submittingLabel : submitLabel}
         </button>
       </div>
     </form>

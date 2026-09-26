@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { LEAD_STATUSES } from '../../../types/lead.js';
 
-export const createLeadFormSchema = z.object({
+export const leadFormSchema = z.object({
   name: z.string().trim().min(1, 'Name is required'),
   email: z
     .string()
@@ -18,11 +18,16 @@ export const createLeadFormSchema = z.object({
   status: z.enum(LEAD_STATUSES),
 });
 
-export type CreateLeadFormValues = z.infer<typeof createLeadFormSchema>;
+export const createLeadFormSchema = leadFormSchema;
 
-export const createLeadFormDefaultValues: CreateLeadFormValues = {
+export type LeadFormValues = z.infer<typeof leadFormSchema>;
+export type CreateLeadFormValues = LeadFormValues;
+
+export const leadFormDefaultValues: LeadFormValues = {
   name: '',
   email: '',
   phone: '',
   status: 'new',
 };
+
+export const createLeadFormDefaultValues = leadFormDefaultValues;

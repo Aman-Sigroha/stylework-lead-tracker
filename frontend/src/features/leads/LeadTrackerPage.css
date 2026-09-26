@@ -178,6 +178,20 @@
   background: var(--surface-muted);
 }
 
+.lead-table__edit-button {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.lead-table__edit-button:hover {
+  background: var(--surface-muted);
+}
+
 .lead-status-select {
   display: flex;
   flex-wrap: wrap;

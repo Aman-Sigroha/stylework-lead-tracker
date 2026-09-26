@@ -71,10 +71,47 @@ export async function createLead(payload: CreateLeadPayload): Promise<Lead> {
   return (body as ApiSuccessResponse<Lead>).data;
 }
 
+export type UpdateLeadPayload = {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  status?: LeadStatus;
+};
+
 export type UpdateLeadStatusPayload = {
   id: string;
   status: LeadStatus;
 };
+
+export async function updateLead(payload: UpdateLeadPayload): Promise<Lead> {
+  const response = await apiRequest(`/leads/${payload.id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: payload.name,
+      email: payload.email,
+      ...(payload.status !== undefined ? { status: payload.status } : {}),
+      ...(payload.phone !== undefined && payload.phone !== ''
+        ? { phone: payload.phone }
+        : {}),
+    }),
+  });
+
+  const body: unknown = await response.json();
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      getApiErrorMessage(body, 'Failed to update lead'),
+      response.status,
+      body,
+    );
+  }
+
+  return (body as ApiSuccessResponse<Lead>).data;
+}
 
 export async function updateLeadStatus(
   payload: UpdateLeadStatusPayload,

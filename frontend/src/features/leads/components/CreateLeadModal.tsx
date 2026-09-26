@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef } from 'react';
 import { useCreateLeadMutation } from '../hooks/useCreateLeadMutation.ts';
-import { CreateLeadForm } from './CreateLeadForm.tsx';
+import { formValuesToLeadPayload } from '../lib/lead-form-values.ts';
+import { leadFormDefaultValues } from '../schemas/create-lead-form.schema.ts';
+import { LeadForm } from './LeadForm.tsx';
 
 type CreateLeadModalProps = {
   isOpen: boolean;
@@ -71,12 +73,17 @@ export function CreateLeadModal({
           </button>
         </header>
 
-        <CreateLeadForm
+        <LeadForm
           formId={formId}
           isOpen={isOpen}
-          mutation={createLeadMutation}
+          mode="create"
+          initialValues={leadFormDefaultValues}
+          isSubmitting={isSubmitting}
           onCancel={handleRequestClose}
           onSuccess={onCreated}
+          onSubmitValues={async (values) => {
+            await createLeadMutation.mutateAsync(formValuesToLeadPayload(values));
+          }}
         />
       </div>
     </dialog>

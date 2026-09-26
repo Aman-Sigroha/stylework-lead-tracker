@@ -7,15 +7,17 @@ import { LEAD_STATUSES } from '../../types/lead.js';
 import { mockLead, mockLeadTwo } from '../../test/fixtures/leads.js';
 import { renderLeadTracker } from '../../test/render-lead-tracker.tsx';
 
-const { fetchLeads, createLead, updateLeadStatus } = vi.hoisted(() => ({
+const { fetchLeads, createLead, updateLead, updateLeadStatus } = vi.hoisted(() => ({
   fetchLeads: vi.fn(),
   createLead: vi.fn(),
+  updateLead: vi.fn(),
   updateLeadStatus: vi.fn(),
 }));
 
 vi.mock('./api/leads-api.js', () => ({
   fetchLeads,
   createLead,
+  updateLead,
   updateLeadStatus,
 }));
 
@@ -65,6 +67,11 @@ describe('LeadTrackerPage', () => {
     vi.clearAllMocks();
     fetchLeads.mockResolvedValue([mockLead, mockLeadTwo]);
     createLead.mockResolvedValue(mockLead);
+    updateLead.mockResolvedValue({
+      ...mockLead,
+      name: 'Updated Jane',
+      email: 'updated@example.com',
+    });
     updateLeadStatus.mockResolvedValue({
       ...mockLead,
       status: 'contacted',
@@ -405,6 +412,146 @@ describe('LeadTrackerPage', () => {
       await waitFor(() => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       });
+    });
+  });
+
+  describe('edit lead', () => {
+    function openEditLeadDialog(
+      user: ReturnType<typeof userEvent.setup>,
+      leadName = 'Jane Doe',
+    ) {
+      return user.click(
+        screen.getByRole('button', { name: `Edit ${leadName}` }),
+      );
+    }
+
+    function submitEditLeadForm(user: ReturnType<typeof userEvent.setup>) {
+      return user.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: 'Save Changes',
+        }),
+      );
+    }
+
+    it('opens the edit modal with Edit Lead title', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openEditLeadDialog(user);
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('dialog')).getByRole('heading', {
+          name: 'Edit Lead',
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('pre-fills the form with the selected lead values', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openEditLeadDialog(user);
+
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).getByLabelText('Name')).toHaveValue('Jane Doe');
+      expect(within(dialog).getByLabelText('Email')).toHaveValue('jane@example.com');
+      expect(within(dialog).getByLabelText(/Phone/)).toHaveValue('+1 555 0100');
+      expect(within(dialog).getByLabelText('Status')).toHaveValue('new');
+    });
+
+    it('calls updateLead with the expected payload on valid submission', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openEditLeadDialog(user);
+      const dialog = screen.getByRole('dialog');
+      const nameInput = within(dialog).getByLabelText('Name');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Updated Jane');
+      await submitEditLeadForm(user);
+
+      await waitFor(() => {
+        expect(updateLead).toHaveBeenCalledWith({
+          id: mockLead.id,
+          name: 'Updated Jane',
+          email: 'jane@example.com',
+          phone: '+1 555 0100',
+          status: 'new',
+        });
+      });
+    });
+
+    it('closes the dialog and shows success after a successful update', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openEditLeadDialog(user);
+      await submitEditLeadForm(user);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      expect(
+        await screen.findByText('Lead updated successfully.'),
+      ).toBeInTheDocument();
+    });
+
+    it('refetches the lead list after a successful update', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+      const initialCalls = fetchLeads.mock.calls.length;
+
+      await openEditLeadDialog(user);
+      await submitEditLeadForm(user);
+
+      await waitFor(() => {
+        expect(fetchLeads.mock.calls.length).toBeGreaterThan(initialCalls);
+      });
+    });
+
+    it('keeps the form open and preserves values when the API fails', async () => {
+      const user = userEvent.setup();
+      updateLead.mockRejectedValue(
+        new ApiRequestError('Validation failed', 400, {
+          success: false,
+          error: { message: 'Validation failed' },
+        }),
+      );
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openEditLeadDialog(user);
+      const dialog = screen.getByRole('dialog');
+      const nameInput = within(dialog).getByLabelText('Name');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Updated Jane');
+      await submitEditLeadForm(user);
+
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      expect(nameInput).toHaveValue('Updated Jane');
+      expect(within(dialog).getByText('Validation failed')).toBeInTheDocument();
+    });
+
+    it('shows validation errors on invalid submission', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openEditLeadDialog(user);
+      const dialog = screen.getByRole('dialog');
+      await user.clear(within(dialog).getByLabelText('Name'));
+      await user.clear(within(dialog).getByLabelText('Email'));
+      await submitEditLeadForm(user);
+
+      expect(await within(dialog).findByText('Name is required')).toBeInTheDocument();
+      expect(within(dialog).getByText('Email is required')).toBeInTheDocument();
     });
   });
 
