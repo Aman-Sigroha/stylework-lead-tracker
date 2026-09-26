@@ -1,3 +1,4 @@
+import './types/express.js';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
