@@ -1,6 +1,7 @@
 import type { LeadStatus } from '../constants/lead-status.js';
 import { query } from '../config/database.js';
 import type { CreateLeadInput } from '../schemas/create-lead.schema.js';
+import type { LeadSearchBy } from '../schemas/list-leads-query.schema.js';
 import type { Lead } from '../types/lead.types.js';
 
 type LeadRow = {
@@ -39,4 +40,54 @@ export async function createLead(input: CreateLeadInput): Promise<Lead> {
   }
 
   return toLead(row);
+}
+
+/** Caps list/search results to avoid unbounded reads on large tables. */
+const LIST_LEADS_MAX_RESULTS = 100;
+
+function searchWhereClause(searchBy: LeadSearchBy): string {
+  switch (searchBy) {
+    case 'name':
+      return 'name ILIKE $1';
+    case 'email':
+      return 'email ILIKE $1';
+    case 'phone':
+      return "COALESCE(phone, '') ILIKE $1";
+    case 'all':
+      return `name ILIKE $1
+        OR email ILIKE $1
+        OR COALESCE(phone, '') ILIKE $1`;
+  }
+}
+
+export async function listLeads(options: {
+  search?: string | undefined;
+  searchBy?: LeadSearchBy | undefined;
+}): Promise<Lead[]> {
+  if (options.search === undefined) {
+    const result = await query<LeadRow>(
+      `SELECT id, name, email, phone, status, created_at, updated_at
+       FROM leads
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      [LIST_LEADS_MAX_RESULTS],
+    );
+
+    return result.rows.map(toLead);
+  }
+
+  const searchBy = options.searchBy ?? 'all';
+  const pattern = `%${options.search}%`;
+  const whereClause = searchWhereClause(searchBy);
+
+  const result = await query<LeadRow>(
+    `SELECT id, name, email, phone, status, created_at, updated_at
+     FROM leads
+     WHERE ${whereClause}
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [pattern, LIST_LEADS_MAX_RESULTS],
+  );
+
+  return result.rows.map(toLead);
 }

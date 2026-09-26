@@ -1,6 +1,10 @@
 import { Router } from 'express';
-import { createLeadHandler } from '../controllers/lead.controller.js';
+import {
+  createLeadHandler,
+  listLeadsHandler,
+} from '../controllers/lead.controller.js';
 
 export const leadRouter = Router();
 
+leadRouter.get('/leads', listLeadsHandler);
 leadRouter.post('/leads', createLeadHandler);
