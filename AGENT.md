@@ -14,15 +14,20 @@ It complements `README.md` (technical overview) and is intended for reviewers wh
 
 - Backend scaffolding (Express 5, TypeScript ESM, health route, app wiring)
 - PostgreSQL integration (`pg` pool, `DATABASE_URL`, migration scripts)
-- Lead REST API (`POST` / `GET` / `PATCH` endpoints, Zod validation, service layer)
-- Backend automated tests (Vitest + Supertest, mocked database `query`)
+- Lead REST API (`POST` / `GET` / `PUT` / `DELETE` / `PATCH` endpoints, Zod validation, service layer)
+- List sorting (`sortBy` / `sortOrder` on `GET /api/leads`, workflow order for status)
+- Backend automated tests (Vitest + Supertest, mocked database `query`; lazy-pool unit tests)
 - Frontend foundation (Vite + React + TypeScript shell, API client, env handling)
 - Lead list and search UI (TanStack Query, debounced search, `searchBy` controls)
 - Create-lead UI (modal, React Hook Form + Zod, mutations)
+- Edit-lead UI (shared `LeadForm`, edit modal, update mutation)
+- Delete-lead UI (confirmation dialog, delete mutation)
+- Lead sorting UI (`LeadSortControls`, sort params in query key and API client)
 - Status editing UI (per-row status selector, shared mutation)
 - Frontend automated tests (React Testing Library, mocked `leads-api`)
-- `README.md` generation and later accuracy-focused refinement
-- `AGENT.md` (this AI development log), drafted from repository and Git history and reviewed by the developer
+- Backend Vercel / serverless compatibility (`vercel.json`, default Express export, lazy DB pool, `VERCEL` listen guard)
+- `README.md` generation and later accuracy-focused refinement (including the final production deployment pass)
+- `AGENT.md` (this AI development log), updated for final submission state and reviewed by the developer
 
 Generated code was not treated as final until the developer reviewed it and ran builds/tests.
 
@@ -38,6 +43,7 @@ Generated code was not treated as final until the developer reviewed it and ran 
 - Drafting focused prompts to paste into Cursor for the next increment
 - Reviewing documentation structure and wording for `README.md` / `AGENT.md`
 - Discussing engineering trade-offs (simplicity vs. extra abstraction layers)
+- Reasoning about Vercel Express deployment constraints (entrypoint export, serverless cold start vs. database pool initialization)
 
 ## 3. Development Workflow
 
@@ -52,8 +58,8 @@ The project followed an incremental, review-driven workflow:
 7. **Verification** — The developer ran `npm run build`, `npm test`, manual API checks (including Postman), and manual UI checks in the browser.
 8. **Failure handling** — When tests or builds failed, issues were diagnosed (with ChatGPT where helpful) and fixed in Cursor or by guided follow-up prompts (for example Vitest `vi.hoisted` mocks, `<dialog>` test polyfills, debounced search test timing).
 9. **Git commits** — Changes were committed in meaningful steps matching features and tests (see Section 8).
-10. **Documentation** — `README.md` was drafted and refined for accuracy against the repo; this `AGENT.md` documents AI usage for submission.
-11. **Deployment** — Production deployment and a live demo URL were **not** completed at the time this document was written; `README.md` lists **Live Demo: TBD**.
+10. **Documentation** — `README.md` and `AGENT.md` were drafted, refined for accuracy against the repo, and finalized with production URLs, deployment notes, edit/delete/sort coverage, and final test counts (committed together on `main` after feature work).
+11. **Deployment** — Backend and frontend were deployed to **Vercel** with **Neon PostgreSQL** for production data. Deployment issues on the backend (Express entrypoint, default export, lazy database initialization, TypeScript/`@types/node` on the Vercel build) were addressed in focused commits (see Section 9). Production was verified with `GET /api/health` and by loading the hosted frontend.
 
 AI output was **reviewed and tested** rather than blindly accepted.
 
@@ -69,14 +75,22 @@ Major Cursor task areas and outcomes (prompts were summarized instructions, not 
 | List / search leads | Cursor | Implement `GET /api/leads`, optional `search`, order by `created_at DESC`, cap 100 | `listLeads` in service, query schema, list handler |
 | `searchBy` support | Cursor | Add `searchBy`: `all` \| `name` \| `email` \| `phone` with safe SQL fragments | `list-leads-query.schema.ts`, `searchWhereClause` in `lead.service.ts` |
 | Update lead status | Cursor | Implement `PATCH /api/leads/:id/status`, UUID param validation, 404 when missing | `update-lead-status.schema.ts`, `updateLeadStatus` in service |
-| Backend tests | Cursor | Vitest + Supertest; mock `query` so tests need no live DB | `leads.api.test.ts`, `src/test/mock-query.ts` (19 tests) |
+| Backend tests | Cursor | Vitest + Supertest; mock `query` so tests need no live DB | `leads.api.test.ts`, `src/test/mock-query.ts`; extended for PUT/DELETE/sort |
+| Lead edit API | Cursor | `PUT /api/leads/:id` full field update, Zod body, 404 when missing | `update-lead.schema.ts`, `updateLead` in service, route + tests |
+| Lead delete API | Cursor | `DELETE /api/leads/:id` hard delete, 200 + message | `deleteLead` in service, handler, route + tests |
+| Lead edit UI | Cursor | Shared `LeadForm`, edit modal, `useUpdateLeadMutation` | `LeadForm.tsx`, `EditLeadModal.tsx`, `leads-api` `updateLead` |
+| Lead delete UI | Cursor | Confirmation dialog before delete | `DeleteLeadDialog.tsx`, `useDeleteLeadMutation` |
+| Lead sorting (API + UI) | Cursor | `sortBy` / `sortOrder` on list; status workflow `ORDER BY`; sort controls on page | `lead-list-sort.ts`, list query schema, `LeadSortControls`, `useLeadsQuery` |
+| Vercel backend deployment | Cursor / developer | Express on Vercel: `vercel.json`, default app export, lazy pool, listen only when not on Vercel | `backend/vercel.json`, `index.ts`, `app.ts`, `database.ts`, `database.test.ts`, `package.json` / `tsconfig.json` tweaks |
+| Backend tests (final) | Cursor / developer | Expanded API + lazy pool tests | **45** tests (`leads.api.test.ts`, `database.test.ts`) |
 | Frontend foundation | Cursor | Vite React shell, `VITE_API_BASE_URL`, shared fetch client, TanStack Query provider | `lib/api-client.ts`, `lib/env.ts`, `App.tsx`, `main.tsx` |
 | Lead list / search UI | Cursor | List with loading/empty/error, debounced search (~300ms), `searchBy` selector | `LeadTrackerPage`, `LeadSearchControls`, `useLeadsQuery`, `useDebouncedValue` |
 | Create lead UI | Cursor | Modal + form, RHF + Zod, create mutation and cache invalidation | `CreateLeadModal`, `CreateLeadForm`, `useCreateLeadMutation`, form schema |
 | Status editing UI | Cursor | Per-row status `<select>`, single update mutation, error handling | `LeadStatusSelect`, `useUpdateLeadStatusMutation` |
-| Frontend tests | Cursor | RTL tests for page flows with mocked `leads-api` | `LeadTrackerPage.test.tsx`, `src/test/setup.ts` (26 tests) |
-| README generation / refinement | Cursor | Submission README; later pass to align commands, API, structure, and tests with the repo | Root `README.md` (accuracy review against `package.json` and source) |
-| AI development log | Cursor | Document AI usage, workflow, and engineering decisions for submission | Root `AGENT.md` (this file) |
+| Frontend tests | Cursor | RTL tests for page flows with mocked `leads-api` | `LeadTrackerPage.test.tsx`, `src/test/setup.ts`; extended for edit, delete, sort |
+| Frontend tests (final) | Cursor / developer | Page flows with mocked `leads-api` | **45** tests (`LeadTrackerPage.test.tsx`) |
+| README generation / refinement | Cursor | Submission README; passes to align commands, API, structure, tests, and deployment with the repo | Root `README.md` (accuracy review against `package.json` and source) |
+| AI development log | Cursor | Document AI usage, workflow, and engineering decisions for submission | Root `AGENT.md` (this file; final update for shipped features and deployment) |
 
 **Recurring constraints given to Cursor** (paraphrased):
 
@@ -99,10 +113,11 @@ Cursor generated or substantially assisted with:
 
 - TypeScript backend project structure and Express wiring
 - Route, controller, and service modules for leads and health
-- Zod schemas for create body, list query (`search` / `searchBy`), status update, and UUID params
-- PostgreSQL pool configuration, SSL handling for hosted URLs, and migration SQL (`001_create_leads`)
-- Backend Vitest + Supertest suite with mocked `query`
-- React feature module under `frontend/src/features/leads/` (page, components, hooks, API module, CSS)
+- Zod schemas for create body, list query (`search` / `searchBy` / `sortBy` / `sortOrder`), full lead update body, status update, and UUID params
+- PostgreSQL pool configuration (lazy initialization), SSL handling for hosted URLs, and migration SQL (`001_create_leads`)
+- Backend Vitest + Supertest suite with mocked `query`; `database.test.ts` for lazy pool behavior
+- `backend/vercel.json` and Express entry changes for Vercel (`default` export, conditional `listen`)
+- React feature module under `frontend/src/features/leads/` (page, components including `LeadForm`, edit/delete/sort UI, hooks, API module, CSS)
 - Shared frontend utilities (`api-client`, query client, error helpers, date formatting)
 - Frontend Vitest + React Testing Library suite with mocked API boundaries
 - Initial and refined `README.md` content
@@ -118,13 +133,15 @@ The developer owned and performed:
 - Root `.gitignore` and decision to keep `.env` out of version control
 - Neon PostgreSQL project setup and **local** `DATABASE_URL` configuration (values never committed)
 - Verifying Neon PostgreSQL connectivity using the backend database connection check
-- Applying and verifying the `001_create_leads` migration against Neon PostgreSQL
-- Manual API verification (e.g. Postman) for create, list, search, `searchBy`, and status update
+- Applying and verifying the `001_create_leads` migration locally with `npm run db:migrate` / `db:check` against the developer’s Neon `DATABASE_URL` (not committed)
+- Manual API verification (e.g. Postman) for create, list, search, `searchBy`, sort, update, delete, and status update
+- Vercel project setup (separate frontend and backend projects), production `DATABASE_URL`, `CORS_ORIGIN`, and `VITE_API_BASE_URL` configuration (values never committed)
 - Running backend/frontend builds and automated tests; interpreting failures
 - Reviewing, correcting, or re-prompting Cursor when output was wrong or too broad
 - Choosing what to accept (e.g. plain CSS, 100-row cap, mock boundaries for tests)
 - Creating Git commits with descriptive messages (see Section 8)
-- Final judgment on submission readiness and pending deployment
+- Production deployment to Vercel and verification of the live API and UI
+- Final judgment on submission readiness
 
 Overall characterization: **AI-assisted implementation, developer-reviewed and developer-verified.**
 
@@ -135,8 +152,8 @@ Overall characterization: **AI-assisted implementation, developer-reviewed and d
 | Area | Choice | Rationale (assignment scope) |
 |------|--------|------------------------------|
 | Frontend | React + TypeScript, Vite | Modern SPA toolchain required by brief; fast dev server and TS safety |
-| Server state | TanStack Query | Caching, refetch, and mutations for list/create/status without manual fetch state everywhere |
-| Forms | React Hook Form + Zod | Client validation aligned with backend rules for create-lead |
+| Server state | TanStack Query | Caching, refetch, and mutations for list/create/edit/delete/status/sort without manual fetch state everywhere |
+| Forms | React Hook Form + Zod | Client validation aligned with backend rules for create- and edit-lead (`LeadForm`) |
 | Backend | Node.js + Express + TypeScript (ESM) | Simple JSON API; matches full-stack JS expectations |
 | Database | PostgreSQL via `pg` | Relational model, constraints, and indexed search |
 | Validation | Zod (backend v4; frontend v3) | Shared pattern for request/query/body validation at API boundary and in forms |
@@ -156,7 +173,7 @@ Implemented in `backend/migrations/001_create_leads.up.sql` and used via paramet
 - **`created_at` / `updated_at`** (`TIMESTAMPTZ`, defaults `NOW()`)
 - **`updated_at` trigger** (`set_updated_at` on `BEFORE UPDATE`)
 - **Indexes** on `status`, `email`, and `created_at DESC`
-- **Parameterized SQL** in `lead.service.ts` for insert, list, search, and status update
+- **Parameterized SQL** in `lead.service.ts` for insert, list, search, sort, full update, delete, and status update
 
 No performance benchmarks were run; design choices are structural, not benchmark-driven.
 
@@ -181,21 +198,37 @@ A separate **repository** layer was intentionally omitted to keep the assignment
 - **100-row cap** (`LIST_LEADS_MAX_RESULTS`) on list and search results
 - Empty or whitespace-only `search` returns the normal capped list; `searchBy` applies only when `search` is non-empty
 
+### Sorting
+
+- **Server-side** `ORDER BY` in PostgreSQL (whitelist in `lead-list-sort.ts`; no user-controlled column names)
+- **`sortBy`**: `name`, `email`, or `status`; omitted → default `created_at DESC`
+- **`sortOrder`**: `asc` or `desc`; defaults to `desc` when `sortBy` is set and `sortOrder` is omitted
+- **`status` sort** uses a fixed `CASE` expression for pipeline order (`new` → `contacted` → `qualified` → `converted` → `lost`), not alphabetical status strings
+- Name/email/status sorts use `created_at DESC` as a tiebreaker
+
+### Edit and delete
+
+- **`PUT /api/leads/:id`** updates name, email, optional phone, and optional status in one request
+- **`DELETE /api/leads/:id`** performs a **hard delete** (row removed from `leads`; no soft-delete or undo)
+- UI: edit opens a modal with the same fields as create; delete requires explicit confirmation in a dialog
+
 ### Frontend architecture
 
 - **Feature folder** `features/leads/` colocates page, components, hooks, API, and styles
 - **Shared** `lib/api-client.ts` for fetch + JSON error handling
-- **TanStack Query** for `useLeadsQuery`, create mutation, status mutation
-- **React Hook Form + Zod** for create-lead modal validation
+- **TanStack Query** for `useLeadsQuery` (including sort params in the query key), create/update/delete/status mutations
+- **React Hook Form + Zod** for create- and edit-lead modals via shared `LeadForm`
 - **Plain CSS** (feature-scoped and global `index.css`) — no component library
-- **Single-page UI** — search, table, create modal, inline status edits on one screen
+- **Single-page UI** — search, sort, table, create/edit modals, delete confirmation, inline status edits on one screen
 
 ### Testing
 
 | Layer | Approach | Live Neon required? |
 |-------|----------|---------------------|
-| Backend | Vitest + Supertest against `createApp()`; `vi.mock` on `config/database.js` `query` | **No** |
+| Backend | Vitest + Supertest against `createApp()`; `vi.mock` on `config/database.js` `query`; `database.test.ts` for lazy pool (no `DATABASE_URL` at import) | **No** |
 | Frontend | Vitest + jsdom + RTL; `vi.mock` on `leads-api`; dialog polyfill in `src/test/setup.ts` | **No** |
+
+**Counts (re-checked on final `main`):** backend **45** passed; frontend **45** passed.
 
 This keeps CI/local test runs deterministic without storing database credentials in the test suite.
 
@@ -205,7 +238,7 @@ Implemented safeguards (appropriate for a local/dev assignment, **not** a full p
 
 | Measure | Implementation |
 |---------|----------------|
-| Request validation | Zod on create body, list query, status body, UUID path param |
+| Request validation | Zod on create body, list query, full update body, status body, UUID path param |
 | SQL injection mitigation | Parameterized queries only; search scope via fixed switch branches |
 | Safe API errors | `400` validation with `details`; generic `500` messages; no stack traces in JSON responses |
 | Malformed JSON | Express error handler returns `400` / `Invalid JSON body` |
@@ -214,10 +247,25 @@ Implemented safeguards (appropriate for a local/dev assignment, **not** a full p
 
 ## 8. Git Commit Strategy
 
-Development used **incremental commits** (one broad “big bang” commit was avoided after initial setup). Observed history on `main` (newest first):
+Development used **incremental commits** (one broad “big bang” commit was avoided after initial setup). On `main`, the **newest commit** updates `README.md` and `AGENT.md` for the final submission (live demo URL, deployment checklist, production verification, and this AI log). Feature and deployment-fix history below (newest feature commit first, then earlier work):
 
 | Commit (short) | Subject |
 |----------------|---------|
+| *(latest docs commit on `main`)* | docs: update README and AGENT for final submission |
+| `dec2160` | feat: add lead sorting |
+| `34c6166` | feat: add lead deletion UI |
+| `74e4397` | feat: add lead editing UI |
+| `19fe0c2` | feat: add lead delete API |
+| `b2f34b2` | feat: add lead edit API |
+| `76ed31d` | fix: export Express app for Vercel |
+| `c091236` | fix: lazy initialize database pool for serverless |
+| `fd968f0` | fix: remove explicit Node type resolution |
+| `35de594` | fix: make Node types available to Vercel |
+| `d515795` | fix: include node types for Vercel runtime |
+| `84453df` | fix: configure Vercel Express build |
+| `4d671eb` | fix: configure Express deployment on Vercel |
+| `ee809b1` | fix: prepare backend for Vercel deployment |
+| `bc252e4` | docs: document AI-assisted development |
 | `87a1ce0` | docs: add project documentation |
 | `6770728` | test: add frontend component coverage |
 | `033bb3f` | feat: add lead status editing |
@@ -233,33 +281,61 @@ Development used **incremental commits** (one broad “big bang” commit was av
 | `1860631` | Initialize full-stack project |
 | `258835d` | Initial commit |
 
-This sequence mirrors backend → database → API features → backend tests → frontend → frontend tests → documentation.
+This sequence mirrors backend → database → core API → tests → frontend → initial documentation → Vercel backend fixes → edit/delete/sort features → **final documentation** (`README.md` live demo and deployment sections; `AGENT.md` aligned with shipped behavior and verification). Use `git log -1` on `main` for the exact hash and message of the latest docs commit.
 
 ## 9. Testing and Verification
 
-Verification performed during development (automated counts re-checked when this document was written):
+Verification performed during development (automated counts re-checked when this document was finalized):
 
 | Activity | Notes |
 |----------|--------|
 | Backend `npm run build` | TypeScript compile to `dist/` |
-| Backend `npm test` | **19** tests passed (`leads.api.test.ts`) |
-| Frontend `npm test` | **26** tests passed (`LeadTrackerPage.test.tsx`) |
+| Backend `npm test` | **45** tests passed (`leads.api.test.ts`, `config/database.test.ts`) |
+| Frontend `npm test` | **45** tests passed (`LeadTrackerPage.test.tsx`) |
 | Frontend `npm run build` | `tsc -b && vite build` |
 | Neon connectivity | Verified against Neon using the backend database connection check with the local `DATABASE_URL` |
-| Migrations | Applied and verified `001_create_leads.up.sql` against Neon PostgreSQL |
-| Manual API testing | Postman (or equivalent) against local backend |
-| Manual UI testing | Browser against Vite dev server + local API |
-| Deployment | **Not complete** — no production URL; README **Live Demo: TBD** |
+| Migrations (local) | Applied and verified `001_create_leads.up.sql` with `npm run db:migrate` / `db:check` against the developer’s Neon instance via local `DATABASE_URL` |
+| Production database | Not verified by re-running migration scripts from this repo against production credentials. The production API successfully serves `GET /api/leads` with `200` and lead records, which shows the Neon database behind the Vercel `DATABASE_URL` has a working `leads` table |
+| Manual API testing | Postman (or equivalent) against local backend; production checks after deploy (e.g. health and list endpoints) |
+| Manual UI testing | Browser against Vite dev server + local API; production UI at the hosted frontend URL |
+
+### Production deployment
+
+| Item | Value |
+|------|--------|
+| **Frontend (live demo)** | https://stylework-lead-tracker.vercel.app |
+| **Backend API base** | https://stylework-lead-tracker-backend.vercel.app/api |
+| **Database** | Neon PostgreSQL (`DATABASE_URL` on the backend Vercel project) |
+
+These URLs are documented in `README.md` and were **verified** by:
+
+- `GET https://stylework-lead-tracker-backend.vercel.app/api/health` → `{"success":true,"message":"API is healthy"}` (does not use the database)
+- `GET https://stylework-lead-tracker-backend.vercel.app/api/leads` → `200` with `{ "success": true, "data": [ ... ] }` (uses the production database)
+- Loading https://stylework-lead-tracker.vercel.app and confirming the page title **Lead Tracker \| Stylework**
+
+Vercel project settings (not committed) hold `DATABASE_URL`, `CORS_ORIGIN`, and the frontend `VITE_API_BASE_URL` used at build time.
+
+### Vercel backend troubleshooting (what actually changed in Git)
+
+Issues encountered while deploying the Express backend to Vercel, and the fixes recorded in commits `ee809b1` through `76ed31d` (plus related TypeScript dependency tweaks):
+
+1. **Express entrypoint / serverless import** — Vercel’s Express integration imports the app as a module instead of running a long-lived `listen()` process. `backend/src/index.ts` now **exports the Express app as default**, calls `app.listen` only when the file is executed directly **and** `process.env.VERCEL !== '1'`, so local `npm run dev` / `npm start` behavior is unchanged.
+2. **Default export requirement** — Vercel’s Express preset expects a **default-exported** application instance. `backend/src/app.ts` exports `default app` from `createApp()` in addition to the named `createApp` export used in tests.
+3. **Lazy database initialization** — An eager `pg` pool at module import forced `DATABASE_URL` during cold start and could fail before routes ran. `backend/src/config/database.ts` now creates the pool on **first** `query()` / pool access (via `getPool()` and a `Proxy` for `pool`). `GET /api/health` remains usable without a database. `backend/src/config/database.test.ts` asserts import without `DATABASE_URL` does not throw.
+4. **`backend/vercel.json`** — Added with `"framework": "express"`; `buildCommand` set to a no-op echo so Vercel’s Express build path is used (`84453df` adjusted `buildCommand` from `null` to the echo string).
+5. **TypeScript / `@types/node` on Vercel** — Build failures related to Node types were addressed by moving `@types/node` to **dependencies** (`35de594`) and removing an explicit `"types": ["node"]` from `backend/tsconfig.json` (`fd968f0`), so the Vercel TypeScript compile can resolve Node types during deployment.
+
+Frontend deployment uses a separate Vercel project (Vite static output); there is no `frontend/vercel.json` in the repository—project settings are configured in the Vercel dashboard.
 
 ## 10. Limitations / Future Work
 
 Current limitations (by design or not yet implemented):
 
 - No **authentication** or **authorization**
-- No **pagination UI** (backend caps at 100 rows per request)
-- No **audit trail** for status changes
+- No **pagination UI** (backend caps at 100 rows per request; sorting is server-side within that cap)
+- No **audit trail** for status or field changes
 - No advanced filters (e.g. by status or date range) beyond text search
-- **Production deployment** still pending at the time this document was written
+- **Hard delete** only — deleted leads are not recoverable from the UI
 - Optional dependency `react-router-dom` unused until multi-route navigation is needed
 
 These items are not presented as shipped features.
