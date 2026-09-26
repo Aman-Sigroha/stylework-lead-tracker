@@ -1,2 +1,3 @@
-/** Shared frontend types will be added alongside lead features. */
-export {};
+export type { ApiSuccessResponse } from './api.js';
+export type { Lead, LeadSearchBy, LeadStatus } from './lead.js';
+export { LEAD_STATUSES } from './lead.js';
