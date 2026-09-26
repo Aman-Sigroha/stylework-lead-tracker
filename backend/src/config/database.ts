@@ -1,8 +1,6 @@
 import pg from 'pg';
 import { requireDatabaseUrl } from './env.js';
 
-const databaseUrl = requireDatabaseUrl();
-
 const { Pool } = pg;
 
 function resolveSsl(
@@ -29,25 +27,56 @@ function resolveSsl(
   return { rejectUnauthorized: true };
 }
 
-export const pool = new Pool({
-  connectionString: databaseUrl,
-  ssl: resolveSsl(databaseUrl),
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
+let poolInstance: pg.Pool | undefined;
+
+function createPool(): pg.Pool {
+  const databaseUrl = requireDatabaseUrl();
+
+  return new Pool({
+    connectionString: databaseUrl,
+    ssl: resolveSsl(databaseUrl),
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  });
+}
+
+function getPool(): pg.Pool {
+  if (poolInstance === undefined) {
+    poolInstance = createPool();
+  }
+
+  return poolInstance;
+}
+
+/**
+ * Lazy pool access for scripts (`connect`, `end`, etc.). The pool is created on
+ * first use, not at module import time.
+ */
+export const pool: pg.Pool = new Proxy({} as pg.Pool, {
+  get(_target, prop, receiver) {
+    const instance = getPool();
+    const value = Reflect.get(instance, prop, receiver);
+
+    if (typeof value === 'function') {
+      return value.bind(instance);
+    }
+
+    return value;
+  },
 });
 
 export async function query<T extends pg.QueryResultRow>(
   text: string,
   params?: unknown[],
 ): Promise<pg.QueryResult<T>> {
-  return pool.query<T>(text, params);
+  return getPool().query<T>(text, params);
 }
 
 /** Verifies that the application can reach PostgreSQL. Safe for dev tooling. */
 export async function checkDatabaseConnection(): Promise<void> {
   try {
-    await pool.query('SELECT 1 AS ok');
+    await getPool().query('SELECT 1 AS ok');
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown database error';
