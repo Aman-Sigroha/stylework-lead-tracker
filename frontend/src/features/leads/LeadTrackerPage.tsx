@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { CreateLeadModal } from './components/CreateLeadModal.tsx';
+import { CreateLeadSection } from './components/CreateLeadSection.tsx';
 import { LeadList } from './components/LeadList.tsx';
 import { LeadListState } from './components/LeadListState.tsx';
 import { LeadSearchControls } from './components/LeadSearchControls.tsx';
+import { SuccessToast } from './components/SuccessToast.tsx';
 import { useDebouncedValue } from './hooks/useDebouncedValue.ts';
 import { useLeadsQuery } from './hooks/useLeadsQuery.ts';
 import type { LeadSearchBy } from '../../types/lead.js';
@@ -10,18 +13,42 @@ import './LeadTrackerPage.css';
 export function LeadTrackerPage() {
   const [search, setSearch] = useState('');
   const [searchBy, setSearchBy] = useState<LeadSearchBy>('all');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
-
   const { data, isLoading, isError, refetch, isFetching } = useLeadsQuery({
     search: debouncedSearch,
     searchBy,
   });
 
+  useEffect(() => {
+    if (successMessage === null) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage(null);
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [successMessage]);
+
   const hasActiveSearch = debouncedSearch.trim() !== '';
   const leads = data ?? [];
 
+  const handleLeadCreated = () => {
+    setIsCreateOpen(false);
+    setSuccessMessage('Lead created successfully.');
+  };
+
   return (
     <div className="lead-tracker">
+      {successMessage !== null ? (
+        <SuccessToast message={successMessage} />
+      ) : null}
+
       <header className="lead-tracker__header">
         <p className="lead-tracker__eyebrow">Stylework</p>
         <h1 className="lead-tracker__title">Lead Tracker</h1>
@@ -41,15 +68,7 @@ export function LeadTrackerPage() {
           />
         </section>
 
-        <section
-          className="lead-tracker__panel lead-tracker__panel--placeholder"
-          aria-label="Create lead"
-        >
-          <h2 className="lead-tracker__panel-title">Create lead</h2>
-          <p className="lead-tracker__placeholder">
-            New lead form will appear here.
-          </p>
-        </section>
+        <CreateLeadSection onOpenCreate={() => setIsCreateOpen(true)} />
 
         <section
           className="lead-tracker__panel lead-tracker__panel--list"
@@ -77,6 +96,12 @@ export function LeadTrackerPage() {
           )}
         </section>
       </main>
+
+      <CreateLeadModal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onCreated={handleLeadCreated}
+      />
     </div>
   );
 }

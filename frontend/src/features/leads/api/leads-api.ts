@@ -1,6 +1,17 @@
-import { apiRequestJson } from '../../../lib/api-client.js';
+import { apiRequest, apiRequestJson } from '../../../lib/api-client.js';
+import {
+  ApiRequestError,
+  getApiErrorMessage,
+} from '../../../lib/api-errors.js';
 import type { ApiSuccessResponse } from '../../../types/api.js';
-import type { Lead, LeadSearchBy } from '../../../types/lead.js';
+import type { Lead, LeadSearchBy, LeadStatus } from '../../../types/lead.js';
+
+export type CreateLeadPayload = {
+  name: string;
+  email: string;
+  phone?: string;
+  status?: LeadStatus;
+};
 
 export type FetchLeadsParams = {
   search?: string;
@@ -29,4 +40,33 @@ export async function fetchLeads(params: FetchLeadsParams = {}): Promise<Lead[]>
   );
 
   return response.data;
+}
+
+export async function createLead(payload: CreateLeadPayload): Promise<Lead> {
+  const response = await apiRequest('/leads', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: payload.name,
+      email: payload.email,
+      status: payload.status ?? 'new',
+      ...(payload.phone !== undefined && payload.phone !== ''
+        ? { phone: payload.phone }
+        : {}),
+    }),
+  });
+
+  const body: unknown = await response.json();
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      getApiErrorMessage(body, 'Failed to create lead'),
+      response.status,
+      body,
+    );
+  }
+
+  return (body as ApiSuccessResponse<Lead>).data;
 }
