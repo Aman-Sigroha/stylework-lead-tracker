@@ -19,3 +19,9 @@ export type Lead = {
 };
 
 export type LeadSearchBy = 'all' | 'name' | 'email' | 'phone';
+
+export type LeadListSortBy = 'name' | 'email' | 'status';
+
+export type LeadSortField = 'default' | LeadListSortBy;
+
+export type LeadSortOrder = 'asc' | 'desc';

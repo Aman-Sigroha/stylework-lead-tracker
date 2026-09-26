@@ -2,6 +2,12 @@ import type { LeadStatus } from '../constants/lead-status.js';
 import { query } from '../config/database.js';
 import type { CreateLeadInput } from '../schemas/create-lead.schema.js';
 import type { UpdateLeadInput } from '../schemas/update-lead.schema.js';
+import {
+  buildListOrderByClause,
+  resolveListSort,
+  type LeadListSortByParam,
+  type LeadSortOrder,
+} from '../constants/lead-list-sort.js';
 import type { LeadSearchBy } from '../schemas/list-leads-query.schema.js';
 import type { Lead } from '../types/lead.types.js';
 
@@ -64,12 +70,20 @@ function searchWhereClause(searchBy: LeadSearchBy): string {
 export async function listLeads(options: {
   search?: string | undefined;
   searchBy?: LeadSearchBy | undefined;
+  sortBy?: LeadListSortByParam | undefined;
+  sortOrder?: LeadSortOrder | undefined;
 }): Promise<Lead[]> {
+  const { sortBy, sortOrder } = resolveListSort(
+    options.sortBy,
+    options.sortOrder,
+  );
+  const orderByClause = buildListOrderByClause(sortBy, sortOrder);
+
   if (options.search === undefined) {
     const result = await query<LeadRow>(
       `SELECT id, name, email, phone, status, created_at, updated_at
        FROM leads
-       ORDER BY created_at DESC
+       ORDER BY ${orderByClause}
        LIMIT $1`,
       [LIST_LEADS_MAX_RESULTS],
     );
@@ -85,7 +99,7 @@ export async function listLeads(options: {
     `SELECT id, name, email, phone, status, created_at, updated_at
      FROM leads
      WHERE ${whereClause}
-     ORDER BY created_at DESC
+     ORDER BY ${orderByClause}
      LIMIT $2`,
     [pattern, LIST_LEADS_MAX_RESULTS],
   );

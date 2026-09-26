@@ -41,6 +41,14 @@ function getLeadListSection() {
   return screen.getByRole('region', { name: 'Lead list' });
 }
 
+function getSortBySelect() {
+  return within(getLeadListSection()).getByLabelText('Sort by');
+}
+
+function getSortDirectionSelect() {
+  return within(getLeadListSection()).getByLabelText('Direction');
+}
+
 function getSearchInput() {
   return within(getSearchSection()).getByPlaceholderText('Search leads...');
 }
@@ -243,6 +251,126 @@ describe('LeadTrackerPage', () => {
       });
 
       await typeSearchTerm(user, '');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith({
+          search: undefined,
+          searchBy: 'all',
+        });
+      });
+    });
+  });
+
+  describe('sort', () => {
+    it('renders sort controls above the lead list', async () => {
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      expect(getSortBySelect()).toBeInTheDocument();
+      expect(getSortDirectionSelect()).toBeInTheDocument();
+      expect(getSortBySelect()).toHaveValue('default');
+    });
+
+    it('requests name sorting when Name is selected', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getSortBySelect(), 'name');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith({
+          search: undefined,
+          searchBy: 'all',
+          sortBy: 'name',
+          sortOrder: 'desc',
+        });
+      });
+    });
+
+    it('requests email sorting when Email is selected', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getSortBySelect(), 'email');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith({
+          search: undefined,
+          searchBy: 'all',
+          sortBy: 'email',
+          sortOrder: 'desc',
+        });
+      });
+    });
+
+    it('requests status sorting when Status is selected', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getSortBySelect(), 'status');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith({
+          search: undefined,
+          searchBy: 'all',
+          sortBy: 'status',
+          sortOrder: 'desc',
+        });
+      });
+    });
+
+    it('updates sortOrder when direction changes', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getSortBySelect(), 'name');
+      await user.selectOptions(getSortDirectionSelect(), 'asc');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith({
+          search: undefined,
+          searchBy: 'all',
+          sortBy: 'name',
+          sortOrder: 'asc',
+        });
+      });
+    });
+
+    it('combines search and sorting in the API request', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getSortBySelect(), 'email');
+      await typeSearchTerm(user, 'jane');
+
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith({
+          search: 'jane',
+          searchBy: 'all',
+          sortBy: 'email',
+          sortOrder: 'desc',
+        });
+      });
+    });
+
+    it('omits sortBy when Default is selected', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getSortBySelect(), 'name');
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sortBy: 'name' }),
+        );
+      });
+
+      await user.selectOptions(getSortBySelect(), 'default');
 
       await waitFor(() => {
         expect(fetchLeads).toHaveBeenLastCalledWith({

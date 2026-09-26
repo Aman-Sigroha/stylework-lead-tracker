@@ -186,6 +186,102 @@ describe('GET /api/leads', () => {
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([]);
   });
+
+  it('orders by created_at DESC when no sort parameters are provided', async () => {
+    await request(app).get('/api/leads');
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(/ORDER BY created_at DESC/),
+      [100],
+    );
+  });
+
+  it('sorts by name ascending', async () => {
+    await request(app).get('/api/leads?sortBy=name&sortOrder=asc');
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(/ORDER BY name ASC, created_at DESC/),
+      [100],
+    );
+  });
+
+  it('sorts by name descending', async () => {
+    await request(app).get('/api/leads?sortBy=name&sortOrder=desc');
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(/ORDER BY name DESC, created_at DESC/),
+      [100],
+    );
+  });
+
+  it('sorts by email ascending', async () => {
+    await request(app).get('/api/leads?sortBy=email&sortOrder=asc');
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(/ORDER BY email ASC, created_at DESC/),
+      [100],
+    );
+  });
+
+  it('sorts by email descending', async () => {
+    await request(app).get('/api/leads?sortBy=email&sortOrder=desc');
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(/ORDER BY email DESC, created_at DESC/),
+      [100],
+    );
+  });
+
+  it('sorts by status ascending using workflow order', async () => {
+    await request(app).get('/api/leads?sortBy=status&sortOrder=asc');
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /ORDER BY CASE status[\s\S]*WHEN 'new' THEN 1[\s\S]*END ASC, created_at DESC/,
+      ),
+      [100],
+    );
+  });
+
+  it('sorts by status descending using reversed workflow order', async () => {
+    await request(app).get('/api/leads?sortBy=status&sortOrder=desc');
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /ORDER BY CASE status[\s\S]*END DESC, created_at DESC/,
+      ),
+      [100],
+    );
+  });
+
+  it('returns 400 for invalid sortBy', async () => {
+    const response = await request(app).get('/api/leads?sortBy=created_at');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Validation failed');
+  });
+
+  it('returns 400 for invalid sortOrder', async () => {
+    const response = await request(app).get(
+      '/api/leads?sortBy=name&sortOrder=up',
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Validation failed');
+  });
+
+  it('combines search with sorting', async () => {
+    await request(app).get(
+      '/api/leads?search=jane&searchBy=name&sortBy=email&sortOrder=asc',
+    );
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /WHERE name ILIKE \$1[\s\S]*ORDER BY email ASC, created_at DESC/,
+      ),
+      ['%jane%', 100],
+    );
+  });
 });
 
 describe('PATCH /api/leads/:id/status', () => {

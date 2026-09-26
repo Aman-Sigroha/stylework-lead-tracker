@@ -4,7 +4,13 @@ import {
   getApiErrorMessage,
 } from '../../../lib/api-errors.js';
 import type { ApiSuccessResponse } from '../../../types/api.js';
-import type { Lead, LeadSearchBy, LeadStatus } from '../../../types/lead.js';
+import type {
+  Lead,
+  LeadListSortBy,
+  LeadSearchBy,
+  LeadSortOrder,
+  LeadStatus,
+} from '../../../types/lead.js';
 
 export type CreateLeadPayload = {
   name: string;
@@ -16,22 +22,32 @@ export type CreateLeadPayload = {
 export type FetchLeadsParams = {
   search?: string;
   searchBy?: LeadSearchBy;
+  sortBy?: LeadListSortBy;
+  sortOrder?: LeadSortOrder;
 };
 
 function buildLeadsPath(params: FetchLeadsParams): string {
+  const query = new URLSearchParams();
   const trimmedSearch = params.search?.trim();
 
-  if (trimmedSearch === undefined || trimmedSearch === '') {
-    return '/leads';
+  if (trimmedSearch !== undefined && trimmedSearch !== '') {
+    query.set('search', trimmedSearch);
+
+    if (params.searchBy !== undefined && params.searchBy !== 'all') {
+      query.set('searchBy', params.searchBy);
+    }
   }
 
-  const query = new URLSearchParams({ search: trimmedSearch });
+  if (params.sortBy !== undefined) {
+    query.set('sortBy', params.sortBy);
 
-  if (params.searchBy !== undefined && params.searchBy !== 'all') {
-    query.set('searchBy', params.searchBy);
+    if (params.sortOrder !== undefined) {
+      query.set('sortOrder', params.sortOrder);
+    }
   }
 
-  return `/leads?${query.toString()}`;
+  const queryString = query.toString();
+  return queryString === '' ? '/leads' : `/leads?${queryString}`;
 }
 
 export async function fetchLeads(params: FetchLeadsParams = {}): Promise<Lead[]> {

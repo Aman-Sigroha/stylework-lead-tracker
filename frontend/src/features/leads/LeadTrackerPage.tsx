@@ -6,6 +6,7 @@ import { CreateLeadSection } from './components/CreateLeadSection.tsx';
 import { LeadList } from './components/LeadList.tsx';
 import { LeadListState } from './components/LeadListState.tsx';
 import { LeadSearchControls } from './components/LeadSearchControls.tsx';
+import { LeadSortControls } from './components/LeadSortControls.tsx';
 import { SuccessToast } from './components/SuccessToast.tsx';
 import { InlineErrorBanner } from './components/InlineErrorBanner.tsx';
 import { useDebouncedValue } from './hooks/useDebouncedValue.ts';
@@ -13,12 +14,20 @@ import { useLeadsQuery } from './hooks/useLeadsQuery.ts';
 import { useUpdateLeadStatusMutation } from './hooks/useUpdateLeadStatusMutation.ts';
 import { ApiRequestError } from '../../lib/api-errors.js';
 import { getStatusUpdateErrorMessage } from './lib/status-update-errors.ts';
-import type { Lead, LeadSearchBy, LeadStatus } from '../../types/lead.js';
+import type {
+  Lead,
+  LeadSearchBy,
+  LeadSortField,
+  LeadSortOrder,
+  LeadStatus,
+} from '../../types/lead.js';
 import './LeadTrackerPage.css';
 
 export function LeadTrackerPage() {
   const [search, setSearch] = useState('');
   const [searchBy, setSearchBy] = useState<LeadSearchBy>('all');
+  const [sortField, setSortField] = useState<LeadSortField>('default');
+  const [sortOrder, setSortOrder] = useState<LeadSortOrder>('desc');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
@@ -29,6 +38,8 @@ export function LeadTrackerPage() {
   const { data, isLoading, isError, refetch, isFetching } = useLeadsQuery({
     search: debouncedSearch,
     searchBy,
+    sortField,
+    sortOrder,
   });
 
   useEffect(() => {
@@ -137,6 +148,13 @@ export function LeadTrackerPage() {
           {statusError !== null ? (
             <InlineErrorBanner message={statusError} />
           ) : null}
+
+          <LeadSortControls
+            sortField={sortField}
+            sortOrder={sortOrder}
+            onSortFieldChange={setSortField}
+            onSortOrderChange={setSortOrder}
+          />
 
           {isLoading ? (
             <LeadListState variant="loading" />

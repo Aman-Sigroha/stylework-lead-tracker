@@ -79,6 +79,8 @@ export async function listLeadsHandler(
     const leads = await listLeads({
       search: parsed.data.search,
       searchBy: parsed.data.searchBy,
+      sortBy: parsed.data.sortBy,
+      sortOrder: parsed.data.sortOrder,
     });
     res.status(200).json({
       success: true,
