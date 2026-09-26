@@ -2,7 +2,7 @@
 
 ## Overview
 
-Stylework Lead Tracker is a full-stack web application for capturing and managing sales leads. Authenticated users can create, search, filter, sort, paginate, edit, delete, and update lead status from a single-page UI. The backend exposes a JSON REST API (plus CSV import/export) backed by PostgreSQL on Neon.
+Stylework Lead Tracker is a full-stack web application for capturing and managing sales leads. Authenticated users can create, search, filter, sort, paginate, edit, delete, and update lead status from a single-page UI. The backend exposes a JSON REST API (plus CSV/Excel export and CSV import) backed by PostgreSQL on Neon.
 
 ## Features
 
@@ -19,6 +19,7 @@ Stylework Lead Tracker is a full-stack web application for capturing and managin
 - **JWT authentication** — login, logout, and session verification
 - **HttpOnly authentication cookie** — JWT stored in cookie (not `localStorage`)
 - **CSV export** — download filtered/sorted leads (full result set; ignores `page`/`limit`)
+- **Excel export** — same filters/sort as CSV; downloads a `.xlsx` workbook (`GET /api/leads/export.xlsx`)
 - **CSV import** — upload CSV, preview validation, confirm import
 - **CSV import preview** — row-level validation before any database write
 - **Duplicate detection on import** — within-file and against existing leads (case-insensitive email)
@@ -255,6 +256,12 @@ Requires authentication. Accepts the same filter/sort query parameters as `GET /
 
 ---
 
+### `GET /api/leads/export.xlsx`
+
+Requires authentication. Same filter/sort query parameters as `GET /api/leads/export.csv` (no `page`/`limit`). Returns an Excel workbook (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) with `Content-Disposition` attachment filename `leads-YYYY-MM-DD.xlsx`.
+
+---
+
 ### `POST /api/leads/import/preview`
 
 Requires authentication. `multipart/form-data` field `file` (`.csv`, size limit enforced). Parses and validates rows (`name`, `email`, `phone`, `status` columns). **Does not write to the database.**
@@ -414,18 +421,18 @@ npm run lint
 
 ## Deployment
 
-**Live demo:** [https://stylework-lead-tracker.vercel.app](https://stylework-lead-tracker.vercel.app)
+**Live demo:** [https://stylework-tracker.vercel.app](https://stylework-tracker.vercel.app)
 
 | Component | URL |
 |-----------|-----|
-| Frontend | https://stylework-lead-tracker.vercel.app |
+| Frontend | https://stylework-tracker.vercel.app |
 | Backend API | https://stylework-lead-tracker-backend.vercel.app/api |
 | Database | Neon (`DATABASE_URL` on backend project only) |
 
 ### Vercel checklist
 
 1. **Database** — run `npm run db:migrate` against production Neon when schema changes (safe to re-run; pending only).
-2. **Backend project** (`backend/`) — set `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN` (frontend origin). Do **not** set `PORT` or `NODE_ENV` for Vercel; runtime is managed by the platform.
+2. **Backend project** (`backend/`) — set `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN` (e.g. `https://stylework-tracker.vercel.app`). Do **not** set `PORT` or `NODE_ENV` for Vercel; runtime is managed by the platform.
 3. **Frontend project** (`frontend/`) — set `VITE_API_BASE_URL=https://stylework-lead-tracker-backend.vercel.app/api` before build.
 4. Create admin with `db:create-admin` against production (locally with production `DATABASE_URL`, not committed).
 

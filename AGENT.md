@@ -249,7 +249,7 @@ Verification on the final documentation pass:
 
 | Item | Value |
 |------|--------|
-| **Frontend (live demo)** | https://stylework-lead-tracker.vercel.app |
+| **Frontend (live demo)** | https://stylework-tracker.vercel.app |
 | **Backend API base** | https://stylework-lead-tracker-backend.vercel.app/api |
 | **Database** | Neon PostgreSQL (`DATABASE_URL` on backend Vercel project) |
 
