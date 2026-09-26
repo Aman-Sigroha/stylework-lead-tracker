@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { createLeadSchema } from '../schemas/create-lead.schema.js';
 import { listLeadsQuerySchema } from '../schemas/list-leads-query.schema.js';
+import { updateLeadSchema } from '../schemas/update-lead.schema.js';
 import {
   leadIdParamSchema,
   updateLeadStatusSchema,
@@ -9,6 +10,7 @@ import {
 import {
   createLead,
   listLeads,
+  updateLead,
   updateLeadStatus,
 } from '../services/lead.service.js';
 
@@ -150,6 +152,66 @@ export async function updateLeadStatusHandler(
       success: false,
       error: {
         message: 'Failed to update lead status',
+      },
+    });
+  }
+}
+
+export async function updateLeadHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const idParsed = z
+    .object({ id: leadIdParamSchema })
+    .safeParse(req.params);
+
+  if (!idParsed.success) {
+    res.status(400).json({
+      success: false,
+      error: {
+        message: 'Validation failed',
+        details: formatValidationErrors(idParsed.error.issues),
+      },
+    });
+    return;
+  }
+
+  const bodyParsed = updateLeadSchema.safeParse(req.body);
+
+  if (!bodyParsed.success) {
+    res.status(400).json({
+      success: false,
+      error: {
+        message: 'Validation failed',
+        details: formatValidationErrors(bodyParsed.error.issues),
+      },
+    });
+    return;
+  }
+
+  try {
+    const lead = await updateLead(idParsed.data.id, bodyParsed.data);
+
+    if (lead === null) {
+      res.status(404).json({
+        success: false,
+        error: {
+          message: 'Lead not found',
+        },
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: lead,
+    });
+  } catch (error) {
+    console.error('Update lead failed:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to update lead',
       },
     });
   }

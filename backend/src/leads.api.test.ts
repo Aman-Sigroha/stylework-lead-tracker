@@ -247,3 +247,135 @@ describe('PATCH /api/leads/:id/status', () => {
     });
   });
 });
+
+describe('PUT /api/leads/:id', () => {
+  it('returns 200 and updates lead fields', async () => {
+    const response = await request(app)
+      .put(`/api/leads/${LEAD_ID}`)
+      .send({
+        name: 'Updated Name',
+        email: 'updated@example.com',
+        phone: '+1 555 9999',
+        status: 'contacted',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data).toMatchObject({
+      id: LEAD_ID,
+      name: 'Updated Name',
+      email: 'updated@example.com',
+      phone: '+1 555 9999',
+      status: 'contacted',
+    });
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(/SET name = \$2[\s\S]*status = \$5/),
+      [
+        LEAD_ID,
+        'Updated Name',
+        'updated@example.com',
+        '+1 555 9999',
+        'contacted',
+      ],
+    );
+  });
+
+  it('normalizes empty phone to null in the SQL params', async () => {
+    const response = await request(app)
+      .put(`/api/leads/${LEAD_ID}`)
+      .send({
+        name: 'Updated Name',
+        email: 'updated@example.com',
+        phone: '',
+      });
+
+    expect(response.status).toBe(200);
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringMatching(/SET name = \$2[\s\S]*phone = \$4/),
+      [LEAD_ID, 'Updated Name', 'updated@example.com', null],
+    );
+  });
+
+  it('returns 400 for invalid UUID', async () => {
+    const response = await request(app)
+      .put('/api/leads/not-a-uuid')
+      .send({
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Validation failed');
+  });
+
+  it('returns 400 for invalid email', async () => {
+    const response = await request(app)
+      .put(`/api/leads/${LEAD_ID}`)
+      .send({
+        name: 'Jane Doe',
+        email: 'not-an-email',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+  });
+
+  it('returns 400 for missing or empty name', async () => {
+    const missingName = await request(app)
+      .put(`/api/leads/${LEAD_ID}`)
+      .send({ email: 'jane@example.com' });
+
+    expect(missingName.status).toBe(400);
+
+    const emptyName = await request(app)
+      .put(`/api/leads/${LEAD_ID}`)
+      .send({ name: '   ', email: 'jane@example.com' });
+
+    expect(emptyName.status).toBe(400);
+  });
+
+  it('returns 400 for invalid status', async () => {
+    const response = await request(app)
+      .put(`/api/leads/${LEAD_ID}`)
+      .send({
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        status: 'archived',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+  });
+
+  it('returns 404 when the lead does not exist', async () => {
+    const response = await request(app)
+      .put(`/api/leads/${MISSING_LEAD_ID}`)
+      .send({
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+      });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      success: false,
+      error: { message: 'Lead not found' },
+    });
+  });
+
+  it('returns 500 when the database fails', async () => {
+    queryMock.mockRejectedValueOnce(new Error('connection refused'));
+
+    const response = await request(app)
+      .put(`/api/leads/${LEAD_ID}`)
+      .send({
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+      });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      success: false,
+      error: { message: 'Failed to update lead' },
+    });
+  });
+});

@@ -1,6 +1,7 @@
 import type { LeadStatus } from '../constants/lead-status.js';
 import { query } from '../config/database.js';
 import type { CreateLeadInput } from '../schemas/create-lead.schema.js';
+import type { UpdateLeadInput } from '../schemas/update-lead.schema.js';
 import type { LeadSearchBy } from '../schemas/list-leads-query.schema.js';
 import type { Lead } from '../types/lead.types.js';
 
@@ -103,6 +104,42 @@ export async function updateLeadStatus(
      RETURNING id, name, email, phone, status, created_at, updated_at`,
     [id, status],
   );
+
+  const row = result.rows[0];
+  if (row === undefined) {
+    return null;
+  }
+
+  return toLead(row);
+}
+
+export async function updateLead(
+  id: string,
+  input: UpdateLeadInput,
+): Promise<Lead | null> {
+  const phone = input.phone ?? null;
+
+  const result =
+    input.status === undefined
+      ? await query<LeadRow>(
+          `UPDATE leads
+     SET name = $2,
+         email = $3,
+         phone = $4
+     WHERE id = $1
+     RETURNING id, name, email, phone, status, created_at, updated_at`,
+          [id, input.name, input.email, phone],
+        )
+      : await query<LeadRow>(
+          `UPDATE leads
+     SET name = $2,
+         email = $3,
+         phone = $4,
+         status = $5
+     WHERE id = $1
+     RETURNING id, name, email, phone, status, created_at, updated_at`,
+          [id, input.name, input.email, phone, input.status],
+        );
 
   const row = result.rows[0];
   if (row === undefined) {

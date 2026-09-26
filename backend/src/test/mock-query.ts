@@ -49,7 +49,34 @@ export function installDefaultQueryMock(queryMock: Mock<QueryFn>): void {
       };
     }
 
-    if (text.includes('UPDATE leads')) {
+    if (text.includes('UPDATE leads') && text.includes('name = $2')) {
+      const id = String(params?.[0]);
+      const name = String(params?.[1]);
+      const email = String(params?.[2]);
+      const phone = (params?.[3] as string | null) ?? null;
+      const status =
+        params?.[4] !== undefined ? String(params[4]) : undefined;
+
+      if (id === MISSING_LEAD_ID) {
+        return { rows: [], rowCount: 0 };
+      }
+
+      return {
+        rows: [
+          createMockLeadRow({
+            id,
+            name,
+            email,
+            phone,
+            status: status ?? 'new',
+            updated_at: new Date('2026-03-25T11:00:00.000Z'),
+          }),
+        ],
+        rowCount: 1,
+      };
+    }
+
+    if (text.includes('UPDATE leads') && text.includes('SET status = $2')) {
       const id = String(params?.[0]);
       const status = String(params?.[1]);
 
