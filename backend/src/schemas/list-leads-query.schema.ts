@@ -142,7 +142,7 @@ const limitSchema = queryString
     }
   });
 
-export const listLeadsQuerySchema = z
+const leadListFiltersSchema = z
   .object({
     search: queryString.transform(normalizeSearch),
     searchBy: queryString
@@ -190,8 +190,6 @@ export const listLeadsQuerySchema = z
           })
           .optional(),
       ),
-    page: pageSchema,
-    limit: limitSchema,
     status: queryString
       .transform(normalizeOptionalQueryString)
       .pipe(
@@ -247,5 +245,14 @@ export const listLeadsQuerySchema = z
       });
     }
   });
+
+export const exportLeadsQuerySchema = leadListFiltersSchema;
+
+export type ExportLeadsQuery = z.infer<typeof exportLeadsQuerySchema>;
+
+export const listLeadsQuerySchema = leadListFiltersSchema.extend({
+  page: pageSchema,
+  limit: limitSchema,
+});
 
 export type ListLeadsQuery = z.infer<typeof listLeadsQuerySchema>;

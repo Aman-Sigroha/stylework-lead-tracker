@@ -1,4 +1,6 @@
-import { apiRequest, apiRequestJson } from '../../../lib/api-client.js';
+import { apiRequest, apiRequestBlob, apiRequestJson } from '../../../lib/api-client.js';
+import { buildLeadsQueryString } from '../lib/build-leads-query.js';
+import { downloadResponseBlob } from '../../../lib/download-blob.js';
 import {
   ApiRequestError,
   getApiErrorMessage,
@@ -38,47 +40,31 @@ type LeadsListApiResponse = ApiSuccessResponse<Lead[]> & {
 };
 
 function buildLeadsPath(params: FetchLeadsParams): string {
-  const query = new URLSearchParams();
-  const trimmedSearch = params.search?.trim();
+  const queryString = buildLeadsQueryString(params);
+  return queryString === '' ? '/leads' : `/leads${queryString}`;
+}
 
-  if (trimmedSearch !== undefined && trimmedSearch !== '') {
-    query.set('search', trimmedSearch);
+export type ExportLeadsParams = Omit<FetchLeadsParams, 'page' | 'limit'>;
 
-    if (params.searchBy !== undefined && params.searchBy !== 'all') {
-      query.set('searchBy', params.searchBy);
-    }
+export async function exportLeadsCsv(params: ExportLeadsParams = {}): Promise<void> {
+  const queryString = buildLeadsQueryString(params, {
+    includePagination: false,
+  });
+  const response = await apiRequestBlob(
+    `/leads/export.csv${queryString === '' ? '' : queryString}`,
+  );
+
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null);
+
+    throw new ApiRequestError(
+      getApiErrorMessage(body, 'Failed to export leads'),
+      response.status,
+      body,
+    );
   }
 
-  if (params.sortBy !== undefined) {
-    query.set('sortBy', params.sortBy);
-
-    if (params.sortOrder !== undefined) {
-      query.set('sortOrder', params.sortOrder);
-    }
-  }
-
-  if (params.page !== undefined) {
-    query.set('page', String(params.page));
-  }
-
-  if (params.limit !== undefined) {
-    query.set('limit', String(params.limit));
-  }
-
-  if (params.status !== undefined) {
-    query.set('status', params.status);
-  }
-
-  if (params.createdFrom !== undefined && params.createdFrom !== '') {
-    query.set('createdFrom', params.createdFrom);
-  }
-
-  if (params.createdTo !== undefined && params.createdTo !== '') {
-    query.set('createdTo', params.createdTo);
-  }
-
-  const queryString = query.toString();
-  return queryString === '' ? '/leads' : `/leads?${queryString}`;
+  await downloadResponseBlob(response);
 }
 
 export async function fetchLeads(

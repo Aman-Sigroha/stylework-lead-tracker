@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createLeadHandler,
   deleteLeadHandler,
+  exportLeadsHandler,
   listLeadsHandler,
   updateLeadHandler,
   updateLeadStatusHandler,
@@ -12,6 +13,7 @@ export const leadRouter = Router();
 
 leadRouter.use(requireAuth);
 
+leadRouter.get('/leads/export.csv', exportLeadsHandler);
 leadRouter.get('/leads', listLeadsHandler);
 leadRouter.post('/leads', createLeadHandler);
 leadRouter.put('/leads/:id', updateLeadHandler);

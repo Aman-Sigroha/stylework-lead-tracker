@@ -1,7 +1,10 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { createLeadSchema } from '../schemas/create-lead.schema.js';
-import { listLeadsQuerySchema } from '../schemas/list-leads-query.schema.js';
+import {
+  exportLeadsQuerySchema,
+  listLeadsQuerySchema,
+} from '../schemas/list-leads-query.schema.js';
 import { updateLeadSchema } from '../schemas/update-lead.schema.js';
 import {
   leadIdParamSchema,
@@ -10,10 +13,15 @@ import {
 import {
   createLead,
   deleteLead,
+  exportLeads,
   listLeads,
   updateLead,
   updateLeadStatus,
 } from '../services/lead.service.js';
+import {
+  buildLeadsExportFilename,
+  formatLeadsCsv,
+} from '../utils/csv.js';
 
 function formatValidationErrors(
   issues: { path: PropertyKey[]; message: string }[],
@@ -98,6 +106,53 @@ export async function listLeadsHandler(
       success: false,
       error: {
         message: 'Failed to list leads',
+      },
+    });
+  }
+}
+
+export async function exportLeadsHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const parsed = exportLeadsQuerySchema.safeParse(req.query);
+
+  if (!parsed.success) {
+    res.status(400).json({
+      success: false,
+      error: {
+        message: 'Validation failed',
+        details: formatValidationErrors(parsed.error.issues),
+      },
+    });
+    return;
+  }
+
+  try {
+    const leads = await exportLeads({
+      search: parsed.data.search,
+      searchBy: parsed.data.searchBy,
+      sortBy: parsed.data.sortBy,
+      sortOrder: parsed.data.sortOrder,
+      status: parsed.data.status,
+      createdFrom: parsed.data.createdFrom,
+      createdTo: parsed.data.createdTo,
+    });
+
+    const csv = formatLeadsCsv(leads);
+    const filename = buildLeadsExportFilename();
+
+    res
+      .status(200)
+      .type('text/csv; charset=utf-8')
+      .set('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(csv);
+  } catch (error) {
+    console.error('Export leads failed:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to export leads',
       },
     });
   }

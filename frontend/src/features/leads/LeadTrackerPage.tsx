@@ -8,6 +8,7 @@ import { LeadList } from './components/LeadList.tsx';
 import { LeadListState } from './components/LeadListState.tsx';
 import { LeadPaginationControls } from './components/LeadPaginationControls.tsx';
 import { LeadSearchControls } from './components/LeadSearchControls.tsx';
+import { LeadExportButton } from './components/LeadExportButton.tsx';
 import { LeadSortControls } from './components/LeadSortControls.tsx';
 import { SuccessToast } from './components/SuccessToast.tsx';
 import { InlineErrorBanner } from './components/InlineErrorBanner.tsx';
@@ -203,6 +204,15 @@ export function LeadTrackerPage() {
             onStatusFilterChange={setStatusFilter}
             onCreatedFromChange={setCreatedFrom}
             onCreatedToChange={setCreatedTo}
+          />
+          <LeadExportButton
+            search={debouncedSearch}
+            searchBy={searchBy}
+            sortField={sortField}
+            sortOrder={sortOrder}
+            statusFilter={statusFilter}
+            createdFrom={createdFrom}
+            createdTo={createdTo}
           />
         </section>
 

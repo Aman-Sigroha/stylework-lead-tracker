@@ -41,3 +41,20 @@ export async function apiRequestJson<T>(
 
   return (await response.json()) as T;
 }
+
+export async function apiRequestBlob(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<Response> {
+  const { headers, ...rest } = options;
+
+  const response = await fetch(resolveUrl(path), {
+    credentials: 'include',
+    ...rest,
+    headers: {
+      ...headers,
+    },
+  });
+
+  return response;
+}

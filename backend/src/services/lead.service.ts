@@ -203,6 +203,37 @@ export async function listLeads(options: {
   };
 }
 
+export type ExportLeadsOptions = {
+  search?: string | undefined;
+  searchBy?: LeadSearchBy | undefined;
+  sortBy?: LeadListSortByParam | undefined;
+  sortOrder?: LeadSortOrder | undefined;
+  status?: LeadStatus | undefined;
+  createdFrom?: string | undefined;
+  createdTo?: string | undefined;
+};
+
+export async function exportLeads(
+  options: ExportLeadsOptions,
+): Promise<Lead[]> {
+  const { sortBy, sortOrder } = resolveListSort(
+    options.sortBy,
+    options.sortOrder,
+  );
+  const orderByClause = buildListOrderByClause(sortBy, sortOrder);
+  const { whereSql, params: filterParams } = buildListWhereClause(options);
+
+  const result = await query<LeadRow>(
+    `SELECT id, name, email, phone, status, created_at, updated_at
+     FROM leads
+     ${whereSql}
+     ORDER BY ${orderByClause}`,
+    filterParams,
+  );
+
+  return result.rows.map(toLead);
+}
+
 export async function updateLeadStatus(
   id: string,
   status: LeadStatus,

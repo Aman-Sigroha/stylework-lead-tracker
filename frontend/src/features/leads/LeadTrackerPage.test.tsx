@@ -26,12 +26,14 @@ const {
   updateLead,
   deleteLead,
   updateLeadStatus,
+  exportLeadsCsv,
 } = vi.hoisted(() => ({
   fetchLeads: vi.fn(),
   createLead: vi.fn(),
   updateLead: vi.fn(),
   deleteLead: vi.fn(),
   updateLeadStatus: vi.fn(),
+  exportLeadsCsv: vi.fn(),
 }));
 
 vi.mock('./api/leads-api.js', () => ({
@@ -40,6 +42,7 @@ vi.mock('./api/leads-api.js', () => ({
   updateLead,
   deleteLead,
   updateLeadStatus,
+  exportLeadsCsv,
 }));
 
 function getSearchSection() {
@@ -1093,6 +1096,147 @@ describe('LeadTrackerPage', () => {
           within(statusSelect).getByRole('option', { name: new RegExp(status, 'i') }),
         ).toBeInTheDocument();
       }
+    });
+  });
+
+  describe('CSV export', () => {
+    beforeEach(() => {
+      exportLeadsCsv.mockResolvedValue(undefined);
+    });
+
+    function getExportButton() {
+      return within(getSearchSection()).getByRole('button', {
+        name: /export/i,
+      });
+    }
+
+    it('renders the Export CSV button', async () => {
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      expect(getExportButton()).toBeInTheDocument();
+    });
+
+    it('exports with the current search and searchBy values', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await typeSearchTerm(user, 'jane');
+      await user.selectOptions(getSearchBySelect(), 'name');
+      await waitFor(() => {
+        expect(fetchLeads).toHaveBeenLastCalledWith(
+          listQuery({ search: 'jane', searchBy: 'name' }),
+        );
+      });
+
+      await user.click(getExportButton());
+
+      await waitFor(() => {
+        expect(exportLeadsCsv).toHaveBeenCalledWith({
+          search: 'jane',
+          searchBy: 'name',
+        });
+      });
+    });
+
+    it('exports with status and date filters', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(
+        within(getSearchSection()).getByLabelText('Filter by status'),
+        'qualified',
+      );
+      await user.type(
+        within(getSearchSection()).getByLabelText('Created from'),
+        '2026-03-01',
+      );
+      await user.type(
+        within(getSearchSection()).getByLabelText('Created to'),
+        '2026-03-31',
+      );
+
+      await user.click(getExportButton());
+
+      await waitFor(() => {
+        expect(exportLeadsCsv).toHaveBeenCalledWith({
+          searchBy: 'all',
+          status: 'qualified',
+          createdFrom: '2026-03-01',
+          createdTo: '2026-03-31',
+        });
+      });
+    });
+
+    it('exports with sorting and omits pagination params', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.selectOptions(getSortBySelect(), 'email');
+      await user.selectOptions(getSortDirectionSelect(), 'asc');
+      await user.click(getExportButton());
+
+      await waitFor(() => {
+        expect(exportLeadsCsv).toHaveBeenCalledWith({
+          searchBy: 'all',
+          sortBy: 'email',
+          sortOrder: 'asc',
+        });
+      });
+
+      const exportArgs = exportLeadsCsv.mock.calls.at(-1)?.[0] as Record<
+        string,
+        unknown
+      >;
+      expect(exportArgs.page).toBeUndefined();
+      expect(exportArgs.limit).toBeUndefined();
+    });
+
+    it('disables the button while export is in progress', async () => {
+      const user = userEvent.setup();
+      let resolveExport: (() => void) | undefined;
+      exportLeadsCsv.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveExport = resolve;
+          }),
+      );
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      const exportButton = getExportButton();
+      await user.click(exportButton);
+
+      expect(exportButton).toBeDisabled();
+      expect(exportButton).toHaveTextContent('Exporting...');
+
+      resolveExport?.();
+      await waitFor(() => {
+        expect(exportButton).not.toBeDisabled();
+      });
+    });
+
+    it('shows an error when export fails', async () => {
+      const user = userEvent.setup();
+      exportLeadsCsv.mockRejectedValue(
+        new ApiRequestError('Failed to export leads', 500, {
+          success: false,
+          error: { message: 'Failed to export leads' },
+        }),
+      );
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.click(getExportButton());
+
+      expect(
+        await within(getSearchSection()).findByText('Failed to export leads'),
+      ).toBeInTheDocument();
     });
   });
 });
