@@ -1,23 +1,29 @@
 import type { PoolClient } from 'pg';
-import { pool } from '../config/database.js';
+import { pool, query } from '../config/database.js';
 import type { CreateLeadInput } from '../schemas/create-lead.schema.js';
 import { createLeadSchema } from '../schemas/create-lead.schema.js';
 import type { Lead } from '../types/lead.types.js';
+import { normalizeImportEmail } from '../utils/lead-import-email.js';
 import {
   parseLeadImportCsvFile,
   type ParsedLeadImportRow,
 } from '../utils/parse-lead-import-csv.js';
 
+export type LeadImportRowErrorType = 'validation' | 'duplicate';
+
 export type LeadImportRowError = {
   row: number;
   field: string;
+  type: LeadImportRowErrorType;
   message: string;
+  email?: string;
 };
 
 export type LeadImportPreviewResult = {
   totalRows: number;
   validRows: number;
   invalidRows: number;
+  duplicateRows: number;
   errors: LeadImportRowError[];
   validLeads: CreateLeadInput[];
 };
@@ -30,6 +36,12 @@ type LeadRow = {
   status: string;
   created_at: Date;
   updated_at: Date;
+};
+
+type ValidatedImportRow = {
+  row: number;
+  lead: CreateLeadInput;
+  normalizedEmail: string;
 };
 
 function toLead(row: LeadRow): Lead {
@@ -66,33 +78,124 @@ function mapZodIssuesToRowErrors(
   return issues.map((issue) => ({
     row,
     field: issue.path.map(String).join('.') || 'row',
+    type: 'validation',
     message: issue.message,
   }));
 }
 
-export function previewLeadImportFromCsv(
+async function findExistingNormalizedEmails(
+  normalizedEmails: string[],
+  client?: PoolClient,
+): Promise<Set<string>> {
+  if (normalizedEmails.length === 0) {
+    return new Set();
+  }
+
+  const runQuery = client?.query.bind(client) ?? query;
+  const result = await runQuery<{ normalized_email: string }>(
+    `SELECT lower(trim(email)) AS normalized_email
+     FROM leads
+     WHERE lower(trim(email)) = ANY($1::text[])`,
+    [normalizedEmails],
+  );
+
+  return new Set(result.rows.map((row) => row.normalized_email));
+}
+
+function filterImportableLeads(
+  leads: CreateLeadInput[],
+  existingEmails: Set<string>,
+): CreateLeadInput[] {
+  const seenInBatch = new Set<string>();
+  const importable: CreateLeadInput[] = [];
+
+  for (const lead of leads) {
+    const normalizedEmail = normalizeImportEmail(lead.email);
+
+    if (seenInBatch.has(normalizedEmail) || existingEmails.has(normalizedEmail)) {
+      continue;
+    }
+
+    seenInBatch.add(normalizedEmail);
+    importable.push(lead);
+  }
+
+  return importable;
+}
+
+export async function previewLeadImportFromCsv(
   fileContents: Buffer,
-): LeadImportPreviewResult {
+): Promise<LeadImportPreviewResult> {
   const rows = parseLeadImportCsvFile(fileContents);
   const errors: LeadImportRowError[] = [];
-  const validLeads: CreateLeadInput[] = [];
+  const validatedRows: ValidatedImportRow[] = [];
+  let invalidRows = 0;
 
   rows.forEach((row, index) => {
     const rowNumber = rowNumberForDataIndex(index);
     const parsed = createLeadSchema.safeParse(normalizeRowForValidation(row));
 
     if (!parsed.success) {
+      invalidRows += 1;
       errors.push(...mapZodIssuesToRowErrors(rowNumber, parsed.error.issues));
       return;
     }
 
-    validLeads.push(parsed.data);
+    validatedRows.push({
+      row: rowNumber,
+      lead: parsed.data,
+      normalizedEmail: normalizeImportEmail(parsed.data.email),
+    });
   });
+
+  const uniqueNormalizedEmails = [
+    ...new Set(validatedRows.map((row) => row.normalizedEmail)),
+  ];
+  const existingEmails = await findExistingNormalizedEmails(
+    uniqueNormalizedEmails,
+  );
+
+  const seenInCsv = new Set<string>();
+  const validLeads: CreateLeadInput[] = [];
+  let duplicateRows = 0;
+
+  for (const validatedRow of validatedRows) {
+    const { row, lead, normalizedEmail } = validatedRow;
+
+    if (seenInCsv.has(normalizedEmail)) {
+      duplicateRows += 1;
+      errors.push({
+        row,
+        field: 'email',
+        type: 'duplicate',
+        message: 'Email already exists in this import',
+        email: lead.email,
+      });
+      continue;
+    }
+
+    seenInCsv.add(normalizedEmail);
+
+    if (existingEmails.has(normalizedEmail)) {
+      duplicateRows += 1;
+      errors.push({
+        row,
+        field: 'email',
+        type: 'duplicate',
+        message: 'Email already exists',
+        email: lead.email,
+      });
+      continue;
+    }
+
+    validLeads.push(lead);
+  }
 
   return {
     totalRows: rows.length,
     validRows: validLeads.length,
-    invalidRows: rows.length - validLeads.length,
+    invalidRows,
+    duplicateRows,
     errors,
     validLeads,
   };
@@ -120,19 +223,36 @@ async function insertLeadWithClient(
 export async function confirmLeadImport(
   leads: CreateLeadInput[],
 ): Promise<{ importedCount: number; leads: Lead[] }> {
+  const validatedLeads: CreateLeadInput[] = [];
+
+  for (const lead of leads) {
+    const parsed = createLeadSchema.safeParse(lead);
+    if (!parsed.success) {
+      throw new Error('Invalid lead payload');
+    }
+
+    validatedLeads.push(parsed.data);
+  }
+
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    const imported: Lead[] = [];
-    for (const lead of leads) {
-      const parsed = createLeadSchema.safeParse(lead);
-      if (!parsed.success) {
-        throw new Error('Invalid lead payload');
-      }
+    const normalizedEmails = [
+      ...new Set(
+        validatedLeads.map((lead) => normalizeImportEmail(lead.email)),
+      ),
+    ];
+    const existingEmails = await findExistingNormalizedEmails(
+      normalizedEmails,
+      client,
+    );
+    const leadsToImport = filterImportableLeads(validatedLeads, existingEmails);
 
-      imported.push(await insertLeadWithClient(client, parsed.data));
+    const imported: Lead[] = [];
+    for (const lead of leadsToImport) {
+      imported.push(await insertLeadWithClient(client, lead));
     }
 
     await client.query('COMMIT');

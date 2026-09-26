@@ -157,6 +157,26 @@
   margin: 0 0 1rem;
 }
 
+.import-lead-dialog__summary--four {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 40rem) {
+  .import-lead-dialog__summary--four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.import-lead-dialog__empty {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.import-lead-dialog__errors--duplicates .import-lead-dialog__errors-title {
+  color: var(--accent);
+}
+
 .import-lead-dialog__summary dt {
   font-size: 0.8125rem;
   color: var(--text-muted);

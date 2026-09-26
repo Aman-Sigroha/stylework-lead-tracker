@@ -30,7 +30,7 @@ export async function previewLeadImportHandler(
   }
 
   try {
-    const preview = previewLeadImportFromCsv(req.file.buffer);
+    const preview = await previewLeadImportFromCsv(req.file.buffer);
 
     res.status(200).json({
       success: true,

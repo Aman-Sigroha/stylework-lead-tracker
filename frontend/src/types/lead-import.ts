@@ -1,9 +1,13 @@
 import type { LeadStatus } from './lead.js';
 
+export type LeadImportRowErrorType = 'validation' | 'duplicate';
+
 export type LeadImportRowError = {
   row: number;
   field: string;
+  type: LeadImportRowErrorType;
   message: string;
+  email?: string;
 };
 
 export type LeadImportPreviewLead = {
@@ -17,6 +21,7 @@ export type LeadImportPreview = {
   totalRows: number;
   validRows: number;
   invalidRows: number;
+  duplicateRows: number;
   errors: LeadImportRowError[];
   validLeads: LeadImportPreviewLead[];
 };

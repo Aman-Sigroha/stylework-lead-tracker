@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CreateLeadModal } from './components/CreateLeadModal.tsx';
 import { DeleteLeadDialog } from './components/DeleteLeadDialog.tsx';
 import { EditLeadModal } from './components/EditLeadModal.tsx';
@@ -44,7 +44,10 @@ export function LeadTrackerPage() {
   const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const resetPage = useCallback(() => {
+    setPage(1);
+  }, []);
+  const debouncedSearch = useDebouncedValue(search, 300, resetPage);
   const logoutMutation = useLogoutMutation();
   const updateLeadStatusMutation = useUpdateLeadStatusMutation();
   const { data, isLoading, isError, refetch, isFetching } = useLeadsQuery({
@@ -59,36 +62,17 @@ export function LeadTrackerPage() {
     createdTo,
   });
 
-  useEffect(() => {
-    setPage(1);
-  }, [
-    debouncedSearch,
-    searchBy,
-    sortField,
-    sortOrder,
-    pageSize,
-    statusFilter,
-    createdFrom,
-    createdTo,
-  ]);
+  const pagination = data?.pagination;
 
-  useEffect(() => {
-    const pagination = data?.pagination;
-    if (pagination === undefined) {
-      return;
-    }
-
+  if (pagination !== undefined) {
     if (pagination.totalPages === 0) {
       if (page !== 1) {
         setPage(1);
       }
-      return;
-    }
-
-    if (page > pagination.totalPages) {
+    } else if (page > pagination.totalPages) {
       setPage(pagination.totalPages);
     }
-  }, [data?.pagination, page]);
+  }
 
   useEffect(() => {
     if (successMessage === null) {
@@ -111,7 +95,6 @@ export function LeadTrackerPage() {
     createdTo.trim() !== '';
   const hasQueryConstraints = hasActiveSearch || hasActiveFilters;
   const leads = data?.leads ?? [];
-  const pagination = data?.pagination;
 
   const handleLeadCreated = () => {
     setIsCreateOpen(false);
@@ -195,15 +178,27 @@ export function LeadTrackerPage() {
             search={search}
             searchBy={searchBy}
             onSearchChange={setSearch}
-            onSearchByChange={setSearchBy}
+            onSearchByChange={(value) => {
+              setSearchBy(value);
+              setPage(1);
+            }}
           />
           <LeadAdvancedFilters
             statusFilter={statusFilter}
             createdFrom={createdFrom}
             createdTo={createdTo}
-            onStatusFilterChange={setStatusFilter}
-            onCreatedFromChange={setCreatedFrom}
-            onCreatedToChange={setCreatedTo}
+            onStatusFilterChange={(value) => {
+              setStatusFilter(value);
+              setPage(1);
+            }}
+            onCreatedFromChange={(value) => {
+              setCreatedFrom(value);
+              setPage(1);
+            }}
+            onCreatedToChange={(value) => {
+              setCreatedTo(value);
+              setPage(1);
+            }}
           />
           <LeadExportButton
             search={debouncedSearch}
@@ -244,8 +239,14 @@ export function LeadTrackerPage() {
           <LeadSortControls
             sortField={sortField}
             sortOrder={sortOrder}
-            onSortFieldChange={setSortField}
-            onSortOrderChange={setSortOrder}
+            onSortFieldChange={(value) => {
+              setSortField(value);
+              setPage(1);
+            }}
+            onSortOrderChange={(value) => {
+              setSortOrder(value);
+              setPage(1);
+            }}
           />
 
           {pagination !== undefined ? (
@@ -253,7 +254,10 @@ export function LeadTrackerPage() {
               pagination={pagination}
               pageSize={pageSize}
               onPageChange={setPage}
-              onPageSizeChange={setPageSize}
+              onPageSizeChange={(value) => {
+                setPageSize(value);
+                setPage(1);
+              }}
             />
           ) : null}
 

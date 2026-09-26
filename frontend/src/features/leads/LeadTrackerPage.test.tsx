@@ -1368,8 +1368,14 @@ describe('LeadTrackerPage', () => {
         totalRows: 2,
         validRows: 1,
         invalidRows: 1,
+        duplicateRows: 0,
         errors: [
-          { row: 3, field: 'email', message: 'Invalid email address' },
+          {
+            row: 3,
+            field: 'email',
+            type: 'validation',
+            message: 'Invalid email address',
+          },
         ],
         validLeads: [
           { name: 'Jane', email: 'jane@example.com', status: 'new' },
@@ -1386,10 +1392,53 @@ describe('LeadTrackerPage', () => {
         name: 'Import CSV preview',
       });
       expect(within(dialog).getByText('Total rows')).toBeInTheDocument();
-      expect(within(dialog).getByText('Valid rows')).toBeInTheDocument();
-      expect(within(dialog).getByText('Invalid rows')).toBeInTheDocument();
+      expect(within(dialog).getByText('Ready to import')).toBeInTheDocument();
+      expect(within(dialog).getByText('Duplicates')).toBeInTheDocument();
+      expect(within(dialog).getByText('Invalid')).toBeInTheDocument();
       expect(
         within(dialog).getByText('Row 3, email: Invalid email address'),
+      ).toBeInTheDocument();
+    });
+
+    it('shows duplicate rows separately from validation errors', async () => {
+      const user = userEvent.setup();
+      previewLeadImport.mockResolvedValue({
+        totalRows: 2,
+        validRows: 1,
+        invalidRows: 0,
+        duplicateRows: 1,
+        errors: [
+          {
+            row: 3,
+            field: 'email',
+            type: 'duplicate',
+            message: 'Email already exists in this import',
+            email: 'jane@example.com',
+          },
+        ],
+        validLeads: [
+          { name: 'Jane', email: 'jane@example.com', status: 'new' },
+        ],
+      });
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await user.upload(
+        getImportFileInput(),
+        new File([importCsv], 'leads.csv', { type: 'text/csv' }),
+      );
+
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Import CSV preview',
+      });
+      expect(
+        within(dialog).getByRole('heading', { name: 'Duplicates' }),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          'Row 3: jane@example.com — Email already exists in this import',
+        ),
       ).toBeInTheDocument();
     });
 
@@ -1399,7 +1448,15 @@ describe('LeadTrackerPage', () => {
         totalRows: 1,
         validRows: 0,
         invalidRows: 1,
-        errors: [{ row: 2, field: 'name', message: 'Name is required' }],
+        duplicateRows: 0,
+        errors: [
+          {
+            row: 2,
+            field: 'name',
+            type: 'validation',
+            message: 'Name is required',
+          },
+        ],
         validLeads: [],
       });
 
@@ -1411,10 +1468,15 @@ describe('LeadTrackerPage', () => {
         new File([importCsv], 'leads.csv', { type: 'text/csv' }),
       );
 
-      await screen.findByRole('dialog', { name: 'Import CSV preview' });
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Import CSV preview',
+      });
       expect(
-        screen.getByRole('button', { name: 'Import Valid Rows' }),
+        within(dialog).getByRole('button', { name: 'Import Valid Rows' }),
       ).toBeDisabled();
+      expect(
+        within(dialog).getByText(/No rows are ready to import/i),
+      ).toBeInTheDocument();
     });
 
     it('confirms import, refetches leads, and resets to page 1', async () => {
@@ -1423,6 +1485,7 @@ describe('LeadTrackerPage', () => {
         totalRows: 1,
         validRows: 1,
         invalidRows: 0,
+        duplicateRows: 0,
         errors: [],
         validLeads: [
           { name: 'Jane', email: 'jane@example.com', status: 'new' },
@@ -1502,6 +1565,7 @@ describe('LeadTrackerPage', () => {
         totalRows: 1,
         validRows: 1,
         invalidRows: 0,
+        duplicateRows: 0,
         errors: [],
         validLeads: [
           { name: 'Jane', email: 'jane@example.com', status: 'new' },

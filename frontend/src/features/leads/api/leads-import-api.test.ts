@@ -27,6 +27,7 @@ describe('leads-import-api', () => {
             totalRows: 1,
             validRows: 1,
             invalidRows: 0,
+            duplicateRows: 0,
             errors: [],
             validLeads: [
               { name: 'Jane', email: 'jane@example.com', status: 'new' },

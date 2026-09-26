@@ -17,6 +17,12 @@ export function ImportLeadCsvDialog({
   onConfirm,
 }: ImportLeadCsvDialogProps) {
   const canConfirm = preview.validRows > 0 && !isConfirming;
+  const validationErrors = preview.errors.filter(
+    (error) => error.type === 'validation',
+  );
+  const duplicateErrors = preview.errors.filter(
+    (error) => error.type === 'duplicate',
+  );
 
   return (
     <dialog className="lead-modal" open aria-label="Import CSV preview">
@@ -26,32 +32,58 @@ export function ImportLeadCsvDialog({
       >
         <h2 className="lead-modal__title">Import CSV preview</h2>
 
-        <dl className="import-lead-dialog__summary">
+        <dl className="import-lead-dialog__summary import-lead-dialog__summary--four">
           <div>
             <dt>Total rows</dt>
             <dd>{preview.totalRows}</dd>
           </div>
           <div>
-            <dt>Valid rows</dt>
+            <dt>Ready to import</dt>
             <dd>{preview.validRows}</dd>
           </div>
           <div>
-            <dt>Invalid rows</dt>
+            <dt>Duplicates</dt>
+            <dd>{preview.duplicateRows}</dd>
+          </div>
+          <div>
+            <dt>Invalid</dt>
             <dd>{preview.invalidRows}</dd>
           </div>
         </dl>
+
+        {preview.validRows === 0 ? (
+          <p className="import-lead-dialog__empty" role="status">
+            No rows are ready to import. Fix validation errors and duplicates,
+            then upload the file again.
+          </p>
+        ) : null}
 
         {confirmError !== null ? (
           <InlineErrorBanner message={confirmError} />
         ) : null}
 
-        {preview.errors.length > 0 ? (
+        {duplicateErrors.length > 0 ? (
+          <div className="import-lead-dialog__errors import-lead-dialog__errors--duplicates">
+            <h3 className="import-lead-dialog__errors-title">Duplicates</h3>
+            <ul className="import-lead-dialog__errors-list">
+              {duplicateErrors.map((error) => (
+                <li key={`dup-${error.row}-${error.email ?? error.message}`}>
+                  Row {error.row}
+                  {error.email !== undefined ? `: ${error.email}` : ''} —{' '}
+                  {error.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {validationErrors.length > 0 ? (
           <div className="import-lead-dialog__errors">
             <h3 className="import-lead-dialog__errors-title">
               Validation errors
             </h3>
             <ul className="import-lead-dialog__errors-list">
-              {preview.errors.map((error) => (
+              {validationErrors.map((error) => (
                 <li key={`${error.row}-${error.field}-${error.message}`}>
                   Row {error.row}, {error.field}: {error.message}
                 </li>

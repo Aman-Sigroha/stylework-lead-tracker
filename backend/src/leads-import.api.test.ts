@@ -134,6 +134,7 @@ describe('POST /api/leads/import/preview', () => {
     expect(response.body.data.totalRows).toBe(3);
     expect(response.body.data.validRows).toBe(2);
     expect(response.body.data.invalidRows).toBe(1);
+    expect(response.body.data.duplicateRows).toBe(0);
     expect(response.body.data.errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -176,6 +177,65 @@ describe('POST /api/leads/import/preview', () => {
     expect(response.body.data.validLeads[0].phone).toBeUndefined();
   });
 
+  it('detects duplicate emails within the uploaded CSV', async () => {
+    const csv = `${validCsvHeader}John,john@example.com,,new\nJane,JOHN@example.com,,new\nBob,bob@example.com,,new`;
+    const response = await authedPost('/api/leads/import/preview').attach(
+      'file',
+      Buffer.from(csv),
+      'leads.csv',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.validRows).toBe(2);
+    expect(response.body.data.duplicateRows).toBe(1);
+    expect(response.body.data.errors).toContainEqual(
+      expect.objectContaining({
+        row: 3,
+        type: 'duplicate',
+        message: 'Email already exists in this import',
+      }),
+    );
+  });
+
+  it('detects duplicates against existing database emails', async () => {
+    queryMock.mockImplementation(async (text: string) => {
+      if (String(text).includes('lower(trim(email))')) {
+        return {
+          rows: [{ normalized_email: 'john@example.com' }],
+          rowCount: 1,
+        };
+      }
+
+      return { rows: [], rowCount: 0 };
+    });
+
+    const response = await authedPost('/api/leads/import/preview').attach(
+      'file',
+      Buffer.from(`${validCsvHeader}John,  john@EXAMPLE.com  ,,new`),
+      'leads.csv',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.validRows).toBe(0);
+    expect(response.body.data.duplicateRows).toBe(1);
+    expect(response.body.data.errors[0]).toMatchObject({
+      type: 'duplicate',
+      message: 'Email already exists',
+    });
+  });
+
+  it('excludes duplicate rows from validLeads', async () => {
+    const csv = `${validCsvHeader}A,a@example.com,,new\nB,a@example.com,,new`;
+    const response = await authedPost('/api/leads/import/preview').attach(
+      'file',
+      Buffer.from(csv),
+      'leads.csv',
+    );
+
+    expect(response.body.data.validLeads).toHaveLength(1);
+    expect(response.body.data.validLeads[0].email).toBe('a@example.com');
+  });
+
   it('rejects invalid status values', async () => {
     const response = await authedPost('/api/leads/import/preview').attach(
       'file',
@@ -201,6 +261,45 @@ describe('POST /api/leads/import/confirm', () => {
       });
 
     expect(response.status).toBe(401);
+  });
+
+  it('re-checks duplicates during confirm and does not insert them', async () => {
+    clientQueryMock.mockImplementation(async (text: string) => {
+      if (text === 'BEGIN' || text === 'COMMIT') {
+        return { rows: [], rowCount: 0 };
+      }
+
+      if (String(text).includes('lower(trim(email))')) {
+        return {
+          rows: [{ normalized_email: 'john@example.com' }],
+          rowCount: 1,
+        };
+      }
+
+      if (text.includes('INSERT INTO leads')) {
+        return {
+          rows: [createMockLeadRow({ email: 'bob@example.com' })],
+          rowCount: 1,
+        };
+      }
+
+      return { rows: [], rowCount: 0 };
+    });
+
+    const response = await authedPost('/api/leads/import/confirm').send({
+      leads: [
+        { name: 'John', email: 'john@example.com', status: 'new' },
+        { name: 'Bob', email: 'bob@example.com', status: 'new' },
+      ],
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.importedCount).toBe(1);
+    expect(
+      clientQueryMock.mock.calls.filter(([sql]) =>
+        String(sql).includes('INSERT INTO leads'),
+      ),
+    ).toHaveLength(1);
   });
 
   it('imports valid leads inside a transaction', async () => {
