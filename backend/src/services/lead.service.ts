@@ -91,3 +91,23 @@ export async function listLeads(options: {
 
   return result.rows.map(toLead);
 }
+
+export async function updateLeadStatus(
+  id: string,
+  status: LeadStatus,
+): Promise<Lead | null> {
+  const result = await query<LeadRow>(
+    `UPDATE leads
+     SET status = $2
+     WHERE id = $1
+     RETURNING id, name, email, phone, status, created_at, updated_at`,
+    [id, status],
+  );
+
+  const row = result.rows[0];
+  if (row === undefined) {
+    return null;
+  }
+
+  return toLead(row);
+}

@@ -1,7 +1,16 @@
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { createLeadSchema } from '../schemas/create-lead.schema.js';
 import { listLeadsQuerySchema } from '../schemas/list-leads-query.schema.js';
-import { createLead, listLeads } from '../services/lead.service.js';
+import {
+  leadIdParamSchema,
+  updateLeadStatusSchema,
+} from '../schemas/update-lead-status.schema.js';
+import {
+  createLead,
+  listLeads,
+  updateLeadStatus,
+} from '../services/lead.service.js';
 
 function formatValidationErrors(
   issues: { path: PropertyKey[]; message: string }[],
@@ -78,6 +87,69 @@ export async function listLeadsHandler(
       success: false,
       error: {
         message: 'Failed to list leads',
+      },
+    });
+  }
+}
+
+export async function updateLeadStatusHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const idParsed = z
+    .object({ id: leadIdParamSchema })
+    .safeParse(req.params);
+
+  if (!idParsed.success) {
+    res.status(400).json({
+      success: false,
+      error: {
+        message: 'Validation failed',
+        details: formatValidationErrors(idParsed.error.issues),
+      },
+    });
+    return;
+  }
+
+  const bodyParsed = updateLeadStatusSchema.safeParse(req.body);
+
+  if (!bodyParsed.success) {
+    res.status(400).json({
+      success: false,
+      error: {
+        message: 'Validation failed',
+        details: formatValidationErrors(bodyParsed.error.issues),
+      },
+    });
+    return;
+  }
+
+  try {
+    const lead = await updateLeadStatus(
+      idParsed.data.id,
+      bodyParsed.data.status,
+    );
+
+    if (lead === null) {
+      res.status(404).json({
+        success: false,
+        error: {
+          message: 'Lead not found',
+        },
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: lead,
+    });
+  } catch (error) {
+    console.error('Update lead status failed:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to update lead status',
       },
     });
   }
