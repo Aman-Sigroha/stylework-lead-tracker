@@ -1,51 +1,62 @@
 import 'dotenv/config';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pool } from '../config/database.js';
+import {
+  NoAppliedMigrationsError,
+  runMigrationsDown,
+  runMigrationsUp,
+} from '../migrations/migration-runner.js';
 
 const migrationsDir = join(
   dirname(fileURLToPath(import.meta.url)),
   '../../migrations',
 );
 
-async function runMigrations(direction: 'up' | 'down'): Promise<void> {
-  const suffix = direction === 'up' ? '.up.sql' : '.down.sql';
-  const files = readdirSync(migrationsDir)
-    .filter((file) => file.endsWith(suffix))
-    .sort();
+const fileSystem = {
+  listFiles: (directory: string) => readdirSync(directory),
+  readFile: (filePath: string) => readFileSync(filePath, 'utf8'),
+};
 
-  if (files.length === 0) {
-    console.log(`No ${direction} migrations found.`);
-    return;
-  }
-
+async function main(): Promise<void> {
+  const direction = process.argv[2] === 'down' ? 'down' : 'up';
   const client = await pool.connect();
 
   try {
-    for (const file of files) {
-      const sql = readFileSync(join(migrationsDir, file), 'utf8');
-      console.log(`Applying ${file}...`);
-      await client.query('BEGIN');
-      try {
-        await client.query(sql);
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
+    if (direction === 'down') {
+      const result = await runMigrationsDown(client, migrationsDir, fileSystem);
+      console.log(
+        `Rolled back migration ${result.rolledBack.version}_${result.rolledBack.name}`,
+      );
+      console.log('Migration down completed successfully.');
+      return;
+    }
+
+    const result = await runMigrationsUp(client, migrationsDir, fileSystem);
+
+    if (result.applied.length === 0) {
+      console.log('No pending migrations found.');
+    } else {
+      for (const migration of result.applied) {
+        console.log(`Applied ${migration.version}_${migration.name}...`);
       }
     }
 
-    console.log(`Migration ${direction} completed successfully.`);
+    console.log('Migration up completed successfully.');
   } finally {
     client.release();
     await pool.end();
   }
 }
 
-const direction = process.argv[2] === 'down' ? 'down' : 'up';
+main().catch((error: unknown) => {
+  if (error instanceof NoAppliedMigrationsError) {
+    console.error(error.message);
+    process.exit(1);
+    return;
+  }
 
-runMigrations(direction).catch((error: unknown) => {
   const message =
     error instanceof Error ? error.message : 'Unknown migration error';
   console.error(`Migration failed: ${message}`);
