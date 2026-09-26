@@ -7,10 +7,17 @@ import { LEAD_STATUSES } from '../../types/lead.js';
 import { mockLead, mockLeadTwo } from '../../test/fixtures/leads.js';
 import { renderLeadTracker } from '../../test/render-lead-tracker.tsx';
 
-const { fetchLeads, createLead, updateLead, updateLeadStatus } = vi.hoisted(() => ({
+const {
+  fetchLeads,
+  createLead,
+  updateLead,
+  deleteLead,
+  updateLeadStatus,
+} = vi.hoisted(() => ({
   fetchLeads: vi.fn(),
   createLead: vi.fn(),
   updateLead: vi.fn(),
+  deleteLead: vi.fn(),
   updateLeadStatus: vi.fn(),
 }));
 
@@ -18,6 +25,7 @@ vi.mock('./api/leads-api.js', () => ({
   fetchLeads,
   createLead,
   updateLead,
+  deleteLead,
   updateLeadStatus,
 }));
 
@@ -76,6 +84,7 @@ describe('LeadTrackerPage', () => {
       ...mockLead,
       status: 'contacted',
     });
+    deleteLead.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -552,6 +561,123 @@ describe('LeadTrackerPage', () => {
 
       expect(await within(dialog).findByText('Name is required')).toBeInTheDocument();
       expect(within(dialog).getByText('Email is required')).toBeInTheDocument();
+    });
+  });
+
+  describe('delete lead', () => {
+    function getDeleteDialog() {
+      return screen.getByRole('dialog', { name: 'Delete lead' });
+    }
+
+    function openDeleteLeadDialog(
+      user: ReturnType<typeof userEvent.setup>,
+      leadName = 'Jane Doe',
+    ) {
+      return user.click(
+        screen.getByRole('button', { name: `Delete ${leadName}` }),
+      );
+    }
+
+    it('opens a confirmation dialog when Delete is clicked', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openDeleteLeadDialog(user);
+
+      const dialog = getDeleteDialog();
+      expect(dialog).toBeInTheDocument();
+      expect(
+        within(dialog).getByText('Are you sure you want to delete this lead?'),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText('Jane Doe')).toBeInTheDocument();
+      expect(within(dialog).getByText('jane@example.com')).toBeInTheDocument();
+    });
+
+    it('does not call deleteLead when Cancel is clicked', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openDeleteLeadDialog(user);
+      await user.click(
+        within(getDeleteDialog()).getByRole('button', { name: 'Cancel' }),
+      );
+
+      expect(deleteLead).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('dialog', { name: 'Delete lead' }),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('calls deleteLead when Delete is confirmed', async () => {
+      const user = userEvent.setup();
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openDeleteLeadDialog(user);
+      await user.click(
+        within(getDeleteDialog()).getByRole('button', { name: 'Delete' }),
+      );
+
+      await waitFor(() => {
+        expect(deleteLead).toHaveBeenCalledWith(mockLead.id);
+      });
+    });
+
+    it('closes the dialog and refreshes the list after a successful deletion', async () => {
+      const user = userEvent.setup();
+      fetchLeads
+        .mockResolvedValueOnce([mockLead, mockLeadTwo])
+        .mockResolvedValue([mockLeadTwo]);
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+      const initialCalls = fetchLeads.mock.calls.length;
+
+      await openDeleteLeadDialog(user);
+      await user.click(
+        within(getDeleteDialog()).getByRole('button', { name: 'Delete' }),
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('dialog', { name: 'Delete lead' }),
+        ).not.toBeInTheDocument();
+      });
+      expect(
+        await screen.findByText('Lead deleted successfully.'),
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(fetchLeads.mock.calls.length).toBeGreaterThan(initialCalls);
+      });
+    });
+
+    it('keeps the lead visible and shows an error when deletion fails', async () => {
+      const user = userEvent.setup();
+      deleteLead.mockRejectedValue(
+        new ApiRequestError('Failed to delete lead', 500, {
+          success: false,
+          error: { message: 'Failed to delete lead' },
+        }),
+      );
+
+      renderLeadTracker();
+      await screen.findByText('Jane Doe');
+
+      await openDeleteLeadDialog(user);
+      await user.click(
+        within(getDeleteDialog()).getByRole('button', { name: 'Delete' }),
+      );
+
+      const dialog = await screen.findByRole('dialog', { name: 'Delete lead' });
+      expect(
+        within(dialog).getByText('Failed to delete lead'),
+      ).toBeInTheDocument();
+      expect(
+        within(getLeadListSection()).getByText('Jane Doe'),
+      ).toBeInTheDocument();
     });
   });
 

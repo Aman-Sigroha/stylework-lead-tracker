@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CreateLeadModal } from './components/CreateLeadModal.tsx';
+import { DeleteLeadDialog } from './components/DeleteLeadDialog.tsx';
 import { EditLeadModal } from './components/EditLeadModal.tsx';
 import { CreateLeadSection } from './components/CreateLeadSection.tsx';
 import { LeadList } from './components/LeadList.tsx';
@@ -20,6 +21,7 @@ export function LeadTrackerPage() {
   const [searchBy, setSearchBy] = useState<LeadSearchBy>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -54,6 +56,11 @@ export function LeadTrackerPage() {
   const handleLeadUpdated = () => {
     setEditingLead(null);
     setSuccessMessage('Lead updated successfully.');
+  };
+
+  const handleLeadDeleted = () => {
+    setDeletingLead(null);
+    setSuccessMessage('Lead deleted successfully.');
   };
 
   const pendingStatusLeadId =
@@ -144,6 +151,7 @@ export function LeadTrackerPage() {
               leads={leads}
               pendingStatusLeadId={pendingStatusLeadId}
               onEditLead={setEditingLead}
+              onDeleteLead={setDeletingLead}
               onStatusChange={handleStatusChange}
             />
           )}
@@ -160,6 +168,12 @@ export function LeadTrackerPage() {
         lead={editingLead}
         onClose={() => setEditingLead(null)}
         onUpdated={handleLeadUpdated}
+      />
+
+      <DeleteLeadDialog
+        lead={deletingLead}
+        onClose={() => setDeletingLead(null)}
+        onDeleted={handleLeadDeleted}
       />
     </div>
   );

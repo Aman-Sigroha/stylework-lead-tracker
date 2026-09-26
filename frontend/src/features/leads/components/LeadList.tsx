@@ -6,6 +6,7 @@ type LeadListProps = {
   leads: Lead[];
   pendingStatusLeadId: string | null;
   onEditLead: (lead: Lead) => void;
+  onDeleteLead: (lead: Lead) => void;
   onStatusChange: (
     leadId: string,
     status: LeadStatus,
@@ -21,6 +22,7 @@ export function LeadList({
   leads,
   pendingStatusLeadId,
   onEditLead,
+  onDeleteLead,
   onStatusChange,
 }: LeadListProps) {
   return (
@@ -51,14 +53,24 @@ export function LeadList({
               </td>
               <td data-label="Created at">{formatLeadDate(lead.createdAt)}</td>
               <td data-label="Actions">
-                <button
-                  type="button"
-                  className="lead-table__edit-button"
-                  onClick={() => onEditLead(lead)}
-                  aria-label={`Edit ${lead.name}`}
-                >
-                  Edit
-                </button>
+                <div className="lead-table__actions">
+                  <button
+                    type="button"
+                    className="lead-table__edit-button"
+                    onClick={() => onEditLead(lead)}
+                    aria-label={`Edit ${lead.name}`}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="lead-table__delete-button"
+                    onClick={() => onDeleteLead(lead)}
+                    aria-label={`Delete ${lead.name}`}
+                  >
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           ))}

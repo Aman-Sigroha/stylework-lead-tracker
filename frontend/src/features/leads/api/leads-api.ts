@@ -113,6 +113,22 @@ export async function updateLead(payload: UpdateLeadPayload): Promise<Lead> {
   return (body as ApiSuccessResponse<Lead>).data;
 }
 
+export async function deleteLead(id: string): Promise<void> {
+  const response = await apiRequest(`/leads/${id}`, {
+    method: 'DELETE',
+  });
+
+  const body: unknown = await response.json();
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      getApiErrorMessage(body, 'Failed to delete lead'),
+      response.status,
+      body,
+    );
+  }
+}
+
 export async function updateLeadStatus(
   payload: UpdateLeadStatusPayload,
 ): Promise<Lead> {
